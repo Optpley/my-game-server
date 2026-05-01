@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+    <h2>Админ‑панель</h2>
+
+    <div class="game-info">
+        <div class="bank">
+            Курс: <span id="rate-value">0</span> stars за 1 TON
+        </div>
+        <input id="rate-input" class="input" placeholder="Новый курс">
+        <button id="save-rate" class="primary-btn">Сохранить курс</button>
+    </div>
+
+    <div class="game-info" style="margin-top: 16px;">
+        <h3>Выдать звёзды</h3>
+        <input id="grant-username" class="input" placeholder="username без @">
+        <input id="grant-amount" class="input" placeholder="Сколько звёзд">
+        <button id="grant-btn" class="secondary-btn">Выдать</button>
+    </div>
+
+    <div class="players-list" style="margin-top: 16px;">
+        <h3>Последние пользователи</h3>
+        <div id="users-list"></div>
+    </div>
+</div>
+
+<script src="admin.js"></script>
+</body>
+</html>
