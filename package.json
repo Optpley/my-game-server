@@ -1,5 +1,5 @@
 {
-  "name": "ice-arena-game",
+  "name": "all-pvp-games-hub",
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
