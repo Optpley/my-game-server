@@ -6,32 +6,139 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="app">
 
-<div class="game-container">
+    <!-- Верхняя панель -->
+    <header class="top-bar">
+        <div class="logo">Ice Arena</div>
+        <button id="profile-btn" class="profile-btn">Профиль</button>
+    </header>
 
-    <div class="bank">
-        Банк: <span id="bank">0</span> ⭐
+    <!-- Меню игр -->
+    <section class="games-menu">
+        <h2>Игры</h2>
+        <div class="games-list">
+            <button class="game-card" data-game="ice_arena">
+                <div class="game-title">Ice Arena</div>
+                <div class="game-sub">Ледовая битва</div>
+                <div class="game-bank">
+                    Банк: <span data-bank="ice_arena">0</span> ⭐
+                </div>
+            </button>
+
+            <button class="game-card" data-game="balls">
+                <div class="game-title">Balls</div>
+                <div class="game-sub">Шаровая гонка</div>
+                <div class="game-bank">
+                    Банк: <span data-bank="balls">0</span> ⭐
+                </div>
+            </button>
+
+            <button class="game-card" data-game="race">
+                <div class="game-title">Ball Race</div>
+                <div class="game-sub">Гонка шаров</div>
+                <div class="game-bank">
+                    Банк: <span data-bank="race">0</span> ⭐
+                </div>
+            </button>
+
+            <button class="game-card" data-game="knockout">
+                <div class="game-title">Knockout</div>
+                <div class="game-sub">Вылетает последний</div>
+                <div class="game-bank">
+                    Банк: <span data-bank="knockout">0</span> ⭐
+                </div>
+            </button>
+        </div>
+    </section>
+
+    <!-- Экран игры -->
+    <section class="game-screen hidden" id="game-screen">
+        <button id="back-to-menu" class="back-btn">← Назад</button>
+
+        <h2 id="game-name">Игра</h2>
+
+        <div class="game-info">
+            <div class="bank">
+                Банк: <span id="bank">0</span> ⭐
+                <span class="commission">(после комиссии: <span id="bank-after">0</span> ⭐)</span>
+            </div>
+
+            <div class="players-count">
+                Игроки: <span id="count">0</span>/2 для старта
+            </div>
+
+            <div class="status" id="status-text">
+                Ожидание игроков...
+            </div>
+        </div>
+
+        <div class="bets">
+            <button class="bet-btn" data-value="custom">своя сумма</button>
+            <button class="bet-btn" data-value="20">20 ⭐</button>
+            <button class="bet-btn" data-value="50">50 ⭐</button>
+            <button class="bet-btn" data-value="200">200 ⭐</button>
+        </div>
+
+        <div class="players-list" id="players-list">
+            <!-- сюда добавляются игроки -->
+        </div>
+    </section>
+
+</div>
+
+<!-- POPUP: победа -->
+<div id="win-popup" class="popup">
+    <div class="popup-content">
+        <h2>Ты выиграл!</h2>
+        <p>Поздравляем, банк твой 🎉</p>
+        <button id="close-popup">✖</button>
     </div>
+</div>
 
-    <div class="players-count">
-        Игроки: <span id="count">0</span>/2 для старта
+<!-- POPUP: профиль -->
+<div id="profile-popup" class="popup">
+    <div class="popup-content profile-content">
+        <h2>Профиль</h2>
+        <div id="profile-username" class="profile-username">@username</div>
+
+        <button id="settings-btn" class="secondary-btn">Настройки</button>
+        <button id="withdraw-btn" class="secondary-btn">Вывод</button>
+
+        <button id="close-profile" class="close-small">Закрыть</button>
     </div>
+</div>
 
-    <div class="status">
-        Ожидание игроков...
+<!-- POPUP: настройки -->
+<div id="settings-popup" class="popup">
+    <div class="popup-content">
+        <h2>Настройки</h2>
+
+        <label class="field">
+            Язык:
+            <select id="lang-select">
+                <option value="ru">Русский</option>
+                <option value="en">English</option>
+            </select>
+        </label>
+
+        <label class="field checkbox-field">
+            <input type="checkbox" id="streamer-mode">
+            Режим стримера (скрыть аватарки игроков)
+        </label>
+
+        <button id="close-settings" class="close-small">Закрыть</button>
     </div>
+</div>
 
-    <div class="bets">
-        <button class="bet-btn" data-value="custom">своя сумма</button>
-        <button class="bet-btn" data-value="20">20 ⭐</button>
-        <button class="bet-btn" data-value="50">50 ⭐</button>
-        <button class="bet-btn" data-value="200">200 ⭐</button>
+<!-- POPUP: вывод -->
+<div id="withdraw-popup" class="popup">
+    <div class="popup-content">
+        <h2>Вывод средств</h2>
+        <input id="ton-wallet" class="input" placeholder="TON кошелёк">
+        <button id="send-withdraw" class="primary-btn">Отправить заявку</button>
+        <button id="close-withdraw" class="close-small">Закрыть</button>
     </div>
-
-    <div class="players-list" id="players-list">
-        <!-- сюда будут добавляться игроки -->
-    </div>
-
 </div>
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
