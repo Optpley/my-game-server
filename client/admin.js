@@ -1,4 +1,4 @@
-const ADMIN_KEY = "SUPER_SECRET_ADMIN_KEY"; // тот же, что в server.js
+const ADMIN_KEY = "G2ale*nik2L";
 
 async function api(path, options = {}) {
     const res = await fetch(path, {
@@ -34,6 +34,7 @@ async function saveRate() {
         method: "POST",
         body: JSON.stringify({ rate })
     });
+    if (data.error) return alert("Ошибка: " + data.error);
     rateValueEl.textContent = data.rate;
     alert("Курс обновлён");
 }
