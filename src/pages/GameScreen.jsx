@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import IcePixelArena from "../components/IcePixelArena";
 
 export default function GameScreen() {
-  // ТЕСТОВЫЕ ИГРОКИ — потом заменишь на данные с сервера
+  // Тестовые игроки — позже заменишь на данные с сервера
   const [players] = useState([
     { id: 1, username: "frog_king", color: "#ff4d4d", weight: 200 },
     { id: 2, username: "frog_winter", color: "#4d9fff", weight: 150 },
@@ -15,8 +15,12 @@ export default function GameScreen() {
   function handleWinner(player) {
     setWinner(player);
 
-    // тут можешь отправить победителя на сервер:
-    // fetch("/game/result", { method: "POST", body: JSON.stringify({ winner: player.id }) })
+    // Здесь можно отправить победителя на сервер:
+    // fetch("/game/result", {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify({ winner: player.id })
+    // });
   }
 
   return (
@@ -29,22 +33,27 @@ export default function GameScreen() {
         alignItems: "center",
         justifyContent: "center",
         background: "#0a0f1c",
-        minHeight: "100vh"
+        minHeight: "100vh",
+        width: "100%",
+        boxSizing: "border-box"
       }}
     >
+      {/* Пиксельная арена */}
       <IcePixelArena players={players} onFinish={handleWinner} />
 
+      {/* Блок победителя */}
       {winner && (
         <div
           style={{
             marginTop: 12,
-            padding: "10px 16px",
+            padding: "12px 18px",
             borderRadius: 12,
             background: "#111827",
             color: "#fff",
             fontSize: 16,
             fontWeight: 600,
-            boxShadow: "0 0 12px rgba(0,0,0,0.4)"
+            boxShadow: "0 0 12px rgba(0,0,0,0.4)",
+            textAlign: "center"
           }}
         >
           Победитель: @{winner.username}
