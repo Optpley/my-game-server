@@ -6,13 +6,35 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Ice Arena</h1>
-    <button id="load">Загрузить игроков</button>
 
-    <pre id="output"></pre>
+<div class="game-container">
 
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="app.js"></script>
+    <div class="bank">
+        Банк: <span id="bank">0</span> ⭐
+    </div>
+
+    <div class="players-count">
+        Игроки: <span id="count">0</span>/2 для старта
+    </div>
+
+    <div class="status">
+        Ожидание игроков...
+    </div>
+
+    <div class="bets">
+        <button class="bet-btn" data-value="custom">своя сумма</button>
+        <button class="bet-btn" data-value="20">20 ⭐</button>
+        <button class="bet-btn" data-value="50">50 ⭐</button>
+        <button class="bet-btn" data-value="200">200 ⭐</button>
+    </div>
+
+    <div class="players-list" id="players-list">
+        <!-- сюда будут добавляться игроки -->
+    </div>
+
+</div>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
-
