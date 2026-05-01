@@ -1,41 +1,33 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const path = require("path");
+import express from "express";
+import cors from "cors";
 
 const app = express();
-
-app.use(express.json());
 app.use(cors());
+app.use(express.json());
 
-// Подключение MongoDB
-mongoose
-  .connect(process.env.MONGO_URL, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  })
-  .then(() => console.log("MongoDB connected"))
-  .catch(err => console.log("MongoDB error:", err));
+// Временные игроки — потом заменишь на реальные данные
+let players = [
+  { id: 1, username: "frog_king", color: "#ff4d4d", weight: 200 },
+  { id: 2, username: "frog_winter", color: "#4d9fff", weight: 150 },
+  { id: 3, username: "frog_sweater", color: "#4dff4d", weight: 100 },
+  { id: 4, username: "frog_armor", color: "#ffb84d", weight: 50 }
+];
 
-// Статическая папка для картинок призов
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// Отдаём список игроков
+app.get("/game/status", (req, res) => {
+  res.json({ players });
+});
 
-// Роуты игроков
-const playerRoutes = require("./routes/player");
-app.use("/player", playerRoutes);
+// Принимаем победителя
+app.post("/game/result", (req, res) => {
+  const { winner } = req.body;
+  console.log("Победитель:", winner);
 
-// Роуты Ice Arena
-const gameRoutes = require("./routes/game");
-app.use("/game", gameRoutes);
+  // Здесь можно обновлять баланс, статистику, историю игр
+  res.json({ ok: true });
+});
 
-// Роуты админ‑панели
-const adminRoutes = require("./routes/admin");
-app.use("/admin", adminRoutes);
-
-// Роуты микс‑режима
-const mixRoutes = require("./routes/mix");
-app.use("/mix", mixRoutes);
-
-// Запуск сервера
+// Порт для локального запуска
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+app.listen(PORT, () => console.log("Server running on port", PORT));
+
