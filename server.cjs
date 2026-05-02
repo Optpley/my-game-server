@@ -21,7 +21,8 @@ db.serialize(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       telegram_id INTEGER UNIQUE,
       username TEXT,
-      stars_balance INTEGER DEFAULT 100,
+      avatar_url TEXT,
+      stars_balance INTEGER DEFAULT 0,
       referrer_id INTEGER,
       ref_count INTEGER DEFAULT 0,
       ref_earned_stars INTEGER DEFAULT 0,
@@ -89,11 +90,11 @@ function getUserByTelegramId(telegram_id) {
   });
 }
 
-function createUser(telegram_id, username, referrerTelegramId) {
+function createUser(telegram_id, username, avatar_url, referrerTelegramId) {
   return new Promise((resolve, reject) => {
     db.run(
-      "INSERT INTO users (telegram_id, username) VALUES (?, ?)",
-      [telegram_id, username],
+      "INSERT INTO users (telegram_id, username, avatar_url) VALUES (?, ?, ?)",
+      [telegram_id, username, avatar_url],
       function (err) {
         if (err) return reject(err);
         const newId = this.lastID;
@@ -154,19 +155,9 @@ function isAdmin(telegram_id) {
 }
 
 // ===== in-memory игры / лобби =====
-//
-// activeGames[gameId] = {
-//   id,
-//   mode,
-//   bank,
-//   status: 'waiting' | 'playing' | 'finished',
-//   players: [{telegram_id, username, bet}],
-//   timer: NodeJS.Timeout | null
-// }
 
 const activeGames = new Map();
 
-// найти или создать игру для режима (одно лобби на режим)
 function findOrCreateGameForMode(mode, bet) {
   for (const g of activeGames.values()) {
     if (g.mode === mode && g.status === "waiting") {
@@ -196,7 +187,6 @@ function findOrCreateGameForMode(mode, bet) {
   });
 }
 
-// старт игры, когда >=2 игроков
 async function startGameIfReady(gameId) {
   const game = activeGames.get(gameId);
   if (!game) return;
@@ -215,11 +205,9 @@ async function startGameIfReady(gameId) {
     players: game.players
   });
 
-  // через 5 секунд — результат
   game.timer = setTimeout(() => finishGame(gameId), 5000);
 }
 
-// завершение игры, выбор победителя, начисление банка
 async function finishGame(gameId) {
   const game = activeGames.get(gameId);
   if (!game) return;
@@ -237,7 +225,10 @@ async function finishGame(gameId) {
 
   await updateUserBalance(winner.telegram_id, game.bank);
 
-  db.run("UPDATE games SET status = 'finished' WHERE id = ?", [gameId]);
+  db.run(
+    "UPDATE games SET status = 'finished' WHERE id = ?, winner_telegram_id = ?, winner_username = ?",
+    [gameId, winner.telegram_id, winner.username]
+  );
 
   broadcastToGame(gameId, {
     type: "game_result",
@@ -248,8 +239,6 @@ async function finishGame(gameId) {
     winner_username: winner.username
   });
 
-  // можно оставить игру в памяти, чтобы игроки увидели результат,
-  // а потом очистить через пару секунд
   setTimeout(() => {
     activeGames.delete(gameId);
   }, 10000);
@@ -257,10 +246,9 @@ async function finishGame(gameId) {
 
 // ===== API =====
 
-// /api/me — создать/получить пользователя, обработать реферал
 app.post("/api/me", async (req, res) => {
   try {
-    const { telegram_id, username, start_param } = req.body;
+    const { telegram_id, username, start_param, avatar_url } = req.body;
 
     if (!telegram_id) {
       return res.json({ ok: false, error: "NO_TELEGRAM_ID" });
@@ -278,11 +266,16 @@ app.post("/api/me", async (req, res) => {
     }
 
     if (!user) {
-      user = await createUser(telegram_id, username || "", referrerTelegramId);
+      user = await createUser(
+        telegram_id,
+        username || "",
+        avatar_url || null,
+        referrerTelegramId
+      );
     } else {
       db.run(
-        "UPDATE users SET username = ? WHERE telegram_id = ?",
-        [username || "", telegram_id]
+        "UPDATE users SET username = ?, avatar_url = ? WHERE telegram_id = ?",
+        [username || "", avatar_url || null, telegram_id]
       );
     }
 
@@ -301,7 +294,6 @@ app.post("/api/me", async (req, res) => {
   }
 });
 
-// /api/settings — заглушка
 app.get("/api/settings", (req, res) => {
   db.get("SELECT * FROM settings WHERE id = 1", (err, row) => {
     if (err) return res.json({ ok: false, error: "DB_ERROR" });
@@ -309,7 +301,6 @@ app.get("/api/settings", (req, res) => {
   });
 });
 
-// /api/tournament/active — берём первый активный
 app.get("/api/tournament/active", (req, res) => {
   db.get(
     "SELECT * FROM tournaments WHERE is_active = 1 ORDER BY id DESC LIMIT 1",
@@ -333,7 +324,6 @@ app.get("/api/tournament/active", (req, res) => {
   );
 });
 
-// /api/game/join — вход в игру, ставка, лобби
 app.post("/api/game/join", async (req, res) => {
   try {
     const { telegram_id, username, mode, amount } = req.body;
@@ -346,7 +336,7 @@ app.post("/api/game/join", async (req, res) => {
 
     let user = await getUserByTelegramId(telegram_id);
     if (!user) {
-      user = await createUser(telegram_id, username || "", null);
+      user = await createUser(telegram_id, username || "", null, null);
     }
 
     if (user.stars_balance < bet) {
@@ -355,7 +345,6 @@ app.post("/api/game/join", async (req, res) => {
 
     await updateUserBalance(telegram_id, -bet);
 
-    // 5% рефереру
     if (user.referrer_id) {
       db.get(
         "SELECT * FROM users WHERE id = ?",
@@ -379,26 +368,25 @@ app.post("/api/game/join", async (req, res) => {
       );
     }
 
-    // найти/создать игру для режима
     let game = await findOrCreateGameForMode(mode, bet);
 
-    // добавить игрока в in-memory игру
     if (!game.players) game.players = [];
     const already = game.players.find(
       (p) => p.telegram_id === telegram_id
     );
     if (!already) {
-      game.players.push({ telegram_id, username: username || "player", bet });
+      game.players.push({
+        telegram_id,
+        username: username || "player",
+        bet
+      });
     }
 
-    // обновить банк в БД
     db.run("UPDATE games SET bank = ? WHERE id = ?", [game.bank, game.id]);
 
-    // обновить пользователя
     user = await getUserByTelegramId(telegram_id);
     const is_admin = telegram_id === ADMIN_TELEGRAM_ID;
 
-    // если игроков >=2 — стартуем
     startGameIfReady(game.id);
 
     return res.json({
@@ -413,7 +401,6 @@ app.post("/api/game/join", async (req, res) => {
   }
 });
 
-// /api/ref/collect — собрать реферальные награды
 app.post("/api/ref/collect", async (req, res) => {
   try {
     const { telegram_id } = req.body;
@@ -565,7 +552,8 @@ function broadcastLobbyState(gameId) {
     if (client.readyState === WebSocket.OPEN) {
       players.push({
         telegram_id: client.telegram_id,
-        username: client.username
+        username: client.username,
+        avatar_url: client.avatar_url
       });
     }
   }
@@ -587,12 +575,13 @@ wss.on("connection", (ws) => {
     }
 
     if (data.type === "join_lobby") {
-      const { game_id, telegram_id, username } = data;
+      const { game_id, telegram_id, username, avatar_url } = data;
       if (!game_id || !telegram_id) return;
 
       ws.game_id = game_id;
       ws.telegram_id = telegram_id;
       ws.username = username || "player";
+      ws.avatar_url = avatar_url || null;
 
       if (!lobbies.has(game_id)) {
         lobbies.set(game_id, new Set());
