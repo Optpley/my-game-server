@@ -260,7 +260,7 @@ function renderProfile() {
     });
     const data = await res.json();
     if (!data.ok) {
-      alertInApp("Ошибка особой игры: " + (data.error || ""));
+      alertInApp("Ошибка особенной игры: " + (data.error || ""));
       return;
     }
     alertInApp("Особенная игра создана: #" + data.special.id);
@@ -271,6 +271,7 @@ function renderProfile() {
   await fetchMe();
   renderGames();
 })();
+
 
 
 
