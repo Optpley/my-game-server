@@ -4,108 +4,167 @@ tg?.expand?.();
 
 let currentUser = null;
 let currentSettings = null;
-let currentGame = null;
 
-// ====== УТИЛИТЫ ======
+// ====== ВСПОМОГАТЕЛЬНЫЕ ======
 
-function setHeader(title, subtitle = "AllPvpGamesHub") {
-  document.getElementById("screen-title").innerText = title;
-  document.getElementById("screen-subtitle").innerText = subtitle;
-}
-
-function setTab(tab) {
+function setActiveTab(tab) {
   document
     .querySelectorAll(".nav-btn")
     .forEach(el => el.classList.remove("nav-btn-active"));
   document
     .querySelector(`.nav-btn[data-tab="${tab}"]`)
     ?.classList.add("nav-btn-active");
-
-  if (tab === "games") renderGamesScreen();
-  if (tab === "balance") renderBalanceScreen();
-  if (tab === "profile") renderProfileScreen();
 }
 
-// ====== ЗАГРУЗКА ПРОФИЛЯ / НАСТРОЕК ======
+function setHeaderBalance() {
+  const el = document.getElementById("header-balance");
+  if (!el || !currentUser) return;
+  el.innerText = `Баланс: ${currentUser.stars_balance} ⭐`;
+}
 
-async function loadProfileData() {
+// ====== ЗАГРУЗКА ДАННЫХ ======
+
+async function loadProfileAndSettings() {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
   const username = tg?.initDataUnsafe?.user?.username || "guest";
 
-  const res = await fetch(API + "/me", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ telegram_id, username })
-  });
-
-  const data = await res.json();
-  if (data.ok) {
-    currentUser = data.user;
+  try {
+    const res = await fetch(API + "/me", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_id, username })
+    });
+    const data = await res.json();
+    if (data.ok) currentUser = data.user;
+  } catch (e) {
+    console.log("profile error", e);
   }
 
-  const res2 = await fetch(API + "/settings");
-  const data2 = await res2.json();
-  if (data2.ok) {
-    currentSettings = data2;
+  try {
+    const res2 = await fetch(API + "/settings");
+    const data2 = await res2.json();
+    if (data2.ok) currentSettings = data2;
+  } catch (e) {
+    console.log("settings error", e);
   }
+
+  setHeaderBalance();
 }
 
-// ====== ЭКРАН: ИГРЫ ======
+// ====== ЭКРАН: ИГРЫ (как на макете) ======
 
 function renderGamesScreen() {
-  setHeader("Игры", "Выберите режим");
   const root = document.getElementById("screen-content");
+  if (!root) return;
 
   root.innerHTML = `
-    <div class="block">
+    <section class="block">
+      <div class="block-header">
+        <div class="block-title">АКТИВНЫЙ ТУРНИР</div>
+        <span class="badge">Stars</span>
+      </div>
+      <div class="tournament-banner">
+        <div class="tournament-text">
+          <div class="tournament-title">Ice Arena и Гонка Шаров</div>
+          <div class="tournament-modes">Ставь звёзды в выбранных режимах и поднимайся в таблице лидеров.</div>
+          <div class="tournament-timer">Смена режима через <span id="tournament-timer">12:07</span></div>
+          <button class="btn-small btn-secondary" onclick="openTournamentScreen()">Открыть турнир</button>
+        </div>
+        <div class="tournament-image">
+          картинка<br/>турнира
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
       <div class="block-header">
         <div class="block-title">Режимы</div>
-        <div class="block-tag">PvP</div>
+        <span class="badge">PvP</span>
       </div>
-      <div class="block-subtitle">Выберите игру, чтобы войти в лобби.</div>
-    </div>
+      <div class="block-subtitle">Выбери игру — справа будет картинка, позже подберём реальные арты.</div>
+    </section>
 
-    <div class="block">
-      <div class="game-card">
+    <section class="games-list">
+      <article class="game-card">
         <div class="game-info">
-          <div class="game-title">Арена</div>
-          <div class="game-subtitle">Классическая битва 1v1 / 2v2</div>
+          <div class="game-title">Ice Arena</div>
+          <div class="game-desc">Классическое "тот, на ком остановится шайба — заберёт весь банк!"</div>
+          <div class="game-meta">Режим: арена, 2–8 игроков</div>
+          <button class="btn-small btn" onclick="joinGame('ice_arena')">Играть</button>
         </div>
-        <button class="btn-small btn" onclick="joinGame('arena')">Играть</button>
-      </div>
+        <div class="game-image game-ice">
+          картинка<br/>игры
+        </div>
+      </article>
 
-      <div class="game-card">
+      <article class="game-card">
         <div class="game-info">
-          <div class="game-title">Шары</div>
-          <div class="game-subtitle">Ставки на траекторию шаров</div>
+          <div class="game-title">Выбывание</div>
+          <div class="game-desc">Стенка убирается, кто останется последним...?</div>
+          <div class="game-meta">Режим: выживание</div>
+          <button class="btn-small btn" onclick="joinGame('knockout')">Играть</button>
         </div>
-        <button class="btn-small btn" onclick="joinGame('balls')">Играть</button>
-      </div>
+        <div class="game-image game-knockout">
+          картинка<br/>игры
+        </div>
+      </article>
 
-      <div class="game-card">
+      <article class="game-card">
         <div class="game-info">
-          <div class="game-title">Гонка</div>
-          <div class="game-subtitle">Кто первый добежит до финиша</div>
+          <div class="game-title">Колесо</div>
+          <div class="game-desc">Выиграет ли шанс? Классический рандом с сектором удачи.</div>
+          <div class="game-meta">Режим: колесо</div>
+          <button class="btn-small btn" onclick="joinGame('wheel')">Играть</button>
         </div>
-        <button class="btn-small btn" onclick="joinGame('race')">Играть</button>
-      </div>
-    </div>
+        <div class="game-image game-wheel">
+          картинка<br/>игры
+        </div>
+      </article>
 
-    <div class="block">
-      <div class="block-header">
-        <div class="block-title">Турнир</div>
-        <div class="block-tag">Stars</div>
-      </div>
-      <div class="block-subtitle">Соревнуйтесь за призы, ставя звёзды в играх.</div>
-      <button class="btn" onclick="renderTournamentScreen()">Открыть турнир</button>
-    </div>
+      <article class="game-card">
+        <div class="game-info">
+          <div class="game-title">Гонка шаров</div>
+          <div class="game-desc">Приедешь первым? Ставка на траекторию и скорость.</div>
+          <div class="game-meta">Режим: гонка</div>
+          <button class="btn-small btn" onclick="joinGame('race_balls')">Играть</button>
+        </div>
+        <div class="game-image game-race">
+          картинка<br/>игры
+        </div>
+      </article>
+
+      <article class="game-card">
+        <div class="game-info">
+          <div class="game-title">Красочная арена</div>
+          <div class="game-desc">Закрась больше других — территория решает всё.</div>
+          <div class="game-meta">Режим: цветовая битва</div>
+          <button class="btn-small btn" onclick="joinGame('color_arena')">Играть</button>
+        </div>
+        <div class="game-image game-color">
+          картинка<br/>игры
+        </div>
+      </article>
+
+      <article class="game-card">
+        <div class="game-info">
+          <div class="game-title">Микс режим</div>
+          <div class="game-desc">Уклоняйся от метеоритов! Смена режима каждые N секунд.</div>
+          <div class="game-meta">Режим: микс</div>
+          <button class="btn-small btn" onclick="joinGame('mix_mode')">Играть</button>
+        </div>
+        <div class="game-image game-mix">
+          картинка<br/>игры
+        </div>
+      </article>
+    </section>
   `;
 }
 
 // ====== ЭКРАН: БАЛАНС ======
 
 function renderBalanceScreen() {
-  setHeader("Баланс", "Управление звёздами");
+  const root = document.getElementById("screen-content");
+  if (!root) return;
 
   const stars = currentUser?.stars_balance ?? 0;
   const spent = currentUser?.total_stars_spent ?? 0;
@@ -115,79 +174,80 @@ function renderBalanceScreen() {
   const rate = currentSettings?.stars_per_ton ?? 1000;
   const fee = currentSettings?.withdraw_fee_percent ?? 5;
 
-  const root = document.getElementById("screen-content");
   root.innerHTML = `
-    <div class="block">
+    <section class="block">
       <div class="block-header">
         <div class="block-title">Ваш баланс</div>
-        <span class="badge">Текущий</span>
+        <span class="badge">Звёзды</span>
       </div>
       <div class="balance-value">${stars} ⭐</div>
-      <div class="balance-sub">~ ${(stars / rate).toFixed(4)} TON по курсу 1 TON = ${rate} ⭐</div>
-    </div>
+      <div class="balance-sub">~ ${(stars / rate).toFixed(4)} TON (1 TON = ${rate} ⭐)</div>
+    </section>
 
-    <div class="block">
+    <section class="block">
       <div class="block-title">Действия</div>
-      <button class="btn" onclick="alert('Пополнение через CryptoBot / Stars — логика позже')">Пополнить</button>
-      <button class="btn btn-secondary" onclick="openWithdrawModal()">Вывести TON</button>
+      <button class="btn" onclick="alert('Пополнение через Stars / CryptoBot — позже')">Пополнить</button>
+      <button class="btn btn-secondary" onclick="openWithdraw()">Вывести TON</button>
       <div class="text-muted" style="margin-top:8px;">
         Комиссия на вывод: ${fee}% от суммы в TON.
       </div>
-    </div>
+    </section>
 
-    <div class="block">
+    <section class="block">
       <div class="block-title">Статистика</div>
-      <div class="profile-row"><span>Потрачено звёзд</span><span>${spent}</span></div>
-      <div class="profile-row"><span>Выиграно звёзд</span><span>${won}</span></div>
-      <div class="profile-row"><span>Выведено звёзд</span><span>${withdrawn}</span></div>
-    </div>
+      <div class="stat-row"><span>Потрачено звёзд</span><span>${spent}</span></div>
+      <div class="stat-row"><span>Выиграно звёзд</span><span>${won}</span></div>
+      <div class="stat-row"><span>Выведено звёзд</span><span>${withdrawn}</span></div>
+    </section>
   `;
 }
 
-function openWithdrawModal() {
-  alert("Тут будет красивое модальное окно вывода TON (позже допилим).");
+function openWithdraw() {
+  alert("Тут будет экран вывода TON (можем дописать позже).");
 }
 
 // ====== ЭКРАН: ПРОФИЛЬ ======
 
 function renderProfileScreen() {
-  setHeader("Профиль", "Ваш аккаунт");
+  const root = document.getElementById("screen-content");
+  if (!root) return;
 
   const username = currentUser?.username || "guest";
   const tid = currentUser?.telegram_id || "-";
 
-  const root = document.getElementById("screen-content");
   root.innerHTML = `
-    <div class="block">
-      <div class="block-title">Основное</div>
+    <section class="block">
+      <div class="block-title">Профиль</div>
       <div class="profile-row"><span>Username</span><span>@${username}</span></div>
       <div class="profile-row"><span>Telegram ID</span><span>${tid}</span></div>
-    </div>
+    </section>
 
-    <div class="block">
+    <section class="block">
       <div class="block-title">Настройки</div>
       <button class="btn btn-secondary" onclick="alert('Смена языка позже')">Сменить язык</button>
-      <button class="btn btn-secondary" onclick="alert('Стример-режим позже')">Стример‑режим</button>
-    </div>
+      <button class="btn btn-secondary" onclick="alert('Стример‑режим позже')">Стример‑режим</button>
+    </section>
 
-    <div class="block">
+    <section class="block">
       <div class="block-title">О проекте</div>
       <div class="text-muted">
         AllPvpGamesHub — хаб PvP‑игр, турниров и ставок на звёзды.
       </div>
-    </div>
+    </section>
   `;
 }
 
 // ====== ЭКРАН: ТУРНИР ======
 
-async function renderTournamentScreen() {
-  setHeader("Турнир", "Соревнование по звёздам");
+async function openTournamentScreen() {
   const root = document.getElementById("screen-content");
+  if (!root) return;
+
   root.innerHTML = `
-    <div class="block">
-      <div class="center text-muted">Загрузка турнира...</div>
-    </div>
+    <section class="block">
+      <div class="block-title">Турнир</div>
+      <div class="text-muted">Загрузка активного турнира...</div>
+    </section>
   `;
 
   try {
@@ -196,10 +256,10 @@ async function renderTournamentScreen() {
 
     if (!data.ok || !data.tournament) {
       root.innerHTML = `
-        <div class="block">
+        <section class="block">
           <div class="block-title">Турнир</div>
           <div class="text-muted">Сейчас нет активного турнира.</div>
-        </div>
+        </section>
       `;
       return;
     }
@@ -213,7 +273,7 @@ async function renderTournamentScreen() {
       prizesHtml = prizes
         .map(
           (p, i) =>
-            `<div class="profile-row"><span>${i + 1} место</span><span>${p}</span></div>`
+            `<div class="stat-row"><span>${i + 1} место</span><span>${p}</span></div>`
         )
         .join("");
     }
@@ -229,65 +289,35 @@ async function renderTournamentScreen() {
     }
 
     root.innerHTML = `
-      <div class="block">
-        <div class="tournament-header">
-          <div>
-            <div class="tournament-name">${t.name}</div>
-            <div class="tournament-time text-muted">ID: ${t.id}</div>
-          </div>
-          <div class="badge">Активен</div>
+      <section class="block">
+        <div class="block-header">
+          <div class="block-title">${t.name}</div>
+          <span class="badge">Активен</span>
         </div>
-        <div class="tournament-prizes">
-          <div class="block-subtitle">Призы:</div>
-          ${prizesHtml || '<div class="text-muted">Призы не указаны</div>'}
-        </div>
-      </div>
+        <div class="block-subtitle">ID: ${t.id}</div>
+      </section>
 
-      <div class="block">
+      <section class="block">
+        <div class="block-title">Призы</div>
+        ${prizesHtml || '<div class="text-muted">Призы не указаны</div>'}
+      </section>
+
+      <section class="block">
         <div class="block-title">Таблица лидеров</div>
-        <div class="tournament-leaderboard">
-          ${lbHtml || '<div class="text-muted">Пока нет участников</div>'}
-        </div>
-      </div>
+        ${lbHtml || '<div class="text-muted">Пока нет участников</div>'}
+      </section>
     `;
   } catch (e) {
     root.innerHTML = `
-      <div class="block">
+      <section class="block">
         <div class="block-title">Турнир</div>
         <div class="text-muted">Ошибка загрузки турнира.</div>
-      </div>
+      </section>
     `;
   }
 }
 
-// ====== ЭКРАН: ЛОББИ (заглушка) ======
-
-function renderLobbyScreen(mode, gameId) {
-  setHeader("Лобби", mode.toUpperCase());
-
-  const root = document.getElementById("screen-content");
-  root.innerHTML = `
-    <div class="block">
-      <div class="lobby-title">Игра: ${mode}</div>
-      <div class="lobby-sub">ID лобби: ${gameId}</div>
-      <div class="text-muted" style="margin-top:8px;">
-        Здесь будет список игроков, таймер, статусы готовности и WebSocket‑обновления.
-      </div>
-    </div>
-
-    <div class="block">
-      <div class="block-title">Игроки</div>
-      <div class="lobby-row"><span>Вы</span><span>⭐ ставка сделана</span></div>
-      <div class="lobby-row text-muted"><span>Ожидание соперника...</span><span></span></div>
-    </div>
-
-    <div class="block">
-      <button class="btn btn-secondary" onclick="setTab('games')">Выйти в игры</button>
-    </div>
-  `;
-}
-
-// ====== ВХОД В ИГРУ ======
+// ====== ВХОД В ИГРУ / ЛОББИ ======
 
 async function joinGame(mode) {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
@@ -307,20 +337,49 @@ async function joinGame(mode) {
       return;
     }
 
-    currentGame = { mode, id: data.game_id };
     renderLobbyScreen(mode, data.game_id);
   } catch (e) {
     alert("Ошибка соединения с сервером");
   }
 }
 
-// ====== СТАРТ ПРИЛОЖЕНИЯ ======
+function renderLobbyScreen(mode, gameId) {
+  const root = document.getElementById("screen-content");
+  if (!root) return;
+
+  root.innerHTML = `
+    <section class="block">
+      <div class="block-title">Лобби</div>
+      <div class="block-subtitle">Режим: ${mode}</div>
+      <div class="text-muted" style="margin-top:8px;">
+        ID лобби: ${gameId}. Здесь позже будет список игроков, таймер и WebSocket‑обновления.
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-title">Игроки</div>
+      <div class="stat-row"><span>Вы</span><span>⭐ ставка сделана</span></div>
+      <div class="stat-row text-muted"><span>Ожидание соперника...</span><span></span></div>
+    </section>
+
+    <section class="block">
+      <button class="btn btn-secondary" onclick="setTab('games')">Выйти в игры</button>
+    </section>
+  `;
+}
+
+// ====== ПЕРЕКЛЮЧЕНИЕ ТАБОВ ======
+
+function setTab(tab) {
+  setActiveTab(tab);
+  if (tab === "games") renderGamesScreen();
+  if (tab === "balance") renderBalanceScreen();
+  if (tab === "profile") renderProfileScreen();
+}
+
+// ====== ИНИЦИАЛИЗАЦИЯ ======
 
 (async function init() {
-  try {
-    await loadProfileData();
-  } catch (e) {
-    // игнор
-  }
+  await loadProfileAndSettings();
   setTab("games");
 })();
