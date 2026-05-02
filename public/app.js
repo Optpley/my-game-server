@@ -15,7 +15,7 @@ function alertInApp(text) {
   setTimeout(() => box.remove(), 2200);
 }
 
-/* ====== SETTINGS PANEL ====== */
+/* ====== SETTINGS ====== */
 
 function toggleSettings() {
   const panel = document.getElementById("settings-panel");
@@ -258,4 +258,15 @@ function setTab(tab) {
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("nav-btn-active"));
   document.querySelector(`.nav-btn[data-tab="${tab}"]`).classList.add("nav-btn-active");
 
-  if
+  if (tab === "games") renderGames();
+  if (tab === "balance") renderBalance();
+  if (tab === "profile") renderProfile();
+}
+
+/* ====== INIT ====== */
+
+(async function init() {
+  await loadUser();
+  await loadSettings();
+  setTab("games");
+})();
