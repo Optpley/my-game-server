@@ -20,7 +20,7 @@ function alertInApp(text) {
   setTimeout(() => box.remove(), 2200);
 }
 
-/* ====== TIME HELPERS (MSK, MIX) ====== */
+/* ====== TIME HELPERS ====== */
 
 function getMoscowNow() {
   const now = new Date();
@@ -68,12 +68,13 @@ async function loadUser() {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
   const username = tg?.initDataUnsafe?.user?.username || "guest";
   const start_param = tg?.initDataUnsafe?.start_param || null;
+  const avatar_url = tg?.initDataUnsafe?.user?.photo_url || null;
 
   try {
     const res = await fetch(API + "/me", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegram_id, username, start_param })
+      body: JSON.stringify({ telegram_id, username, start_param, avatar_url })
     });
 
     const data = await res.json();
@@ -206,7 +207,7 @@ async function renderGames() {
   }
 }
 
-/* ====== JOIN GAME → LOBBY (WS) ====== */
+/* ====== JOIN GAME → LOBBY ====== */
 
 async function joinGame(mode) {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
@@ -252,7 +253,7 @@ function renderLobby(mode, id) {
     <section class="block">
       <div class="block-title">Лобби</div>
       <div class="text-muted">Режим: ${mode}</div>
-      <div class="text-muted">ID: ${id}</div>
+      <div class="text-muted">ID игры: ${id}</div>
       <div style="margin-top:10px;">Онлайн игроки:</div>
       <div id="lobby-players" class="text-muted" style="margin-top:4px;">подключение...</div>
     </section>
@@ -273,7 +274,7 @@ function leaveLobbyAndBack() {
   setTab("games");
 }
 
-/* ====== WebSocket для лобби и игры ====== */
+/* ====== WebSocket ====== */
 
 function openLobbyWS(gameId) {
   closeLobbyWS();
@@ -288,13 +289,15 @@ function openLobbyWS(gameId) {
   ws.onopen = () => {
     const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
     const username = tg?.initDataUnsafe?.user?.username || "guest";
+    const avatar_url = tg?.initDataUnsafe?.user?.photo_url || null;
 
     ws.send(
       JSON.stringify({
         type: "join_lobby",
         game_id: gameId,
         telegram_id,
-        username
+        username,
+        avatar_url
       })
     );
   };
@@ -318,8 +321,12 @@ function openLobbyWS(gameId) {
 
       el.innerHTML = data.players
         .map(
-          (p) =>
-            `<div>@${p.username || "player"} (${p.telegram_id})</div>`
+          (p) => `
+          <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+            <img src="${p.avatar_url || ""}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;background:#222;">
+            <div>@${p.username || "player"}</div>
+          </div>
+        `
         )
         .join("");
     }
@@ -344,7 +351,6 @@ function openLobbyWS(gameId) {
         ${isMeWinner ? "Ты забрал банк! 🔥" : "В этот раз не повезло."}
       `;
 
-      // обновить баланс после победы
       loadUser();
     }
   };
@@ -368,7 +374,7 @@ function closeLobbyWS() {
   }
 }
 
-/* ====== BALANCE SCREEN ====== */
+/* ====== BALANCE ====== */
 
 function renderBalance() {
   const root = document.getElementById("screen-content");
@@ -395,7 +401,7 @@ function renderBalance() {
   `;
 }
 
-/* ====== PROFILE + REFERRALS ====== */
+/* ====== PROFILE + REF ====== */
 
 function renderProfile() {
   const root = document.getElementById("screen-content");
@@ -491,7 +497,7 @@ async function collectRef() {
   }
 }
 
-/* ====== SETTINGS BOTTOM SHEET ====== */
+/* ====== SETTINGS SHEET ====== */
 
 let sheetStartY = null;
 let sheetCurrentY = 0;
@@ -563,7 +569,7 @@ function onSheetTouchEnd() {
   sheetCurrentY = 0;
 }
 
-/* ====== ADMIN PANEL ====== */
+/* ====== ADMIN PANEL (по ID, как было) ====== */
 
 function openAdminPanel() {
   if (!currentUser?.is_admin) {
