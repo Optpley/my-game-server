@@ -4,6 +4,7 @@ tg?.expand?.();
 
 let currentUser = null;
 let currentSettings = null;
+let mixTimerInterval = null;
 
 /* ====== IN-APP ALERT ====== */
 
@@ -15,17 +16,58 @@ function alertInApp(text) {
   setTimeout(() => box.remove(), 2200);
 }
 
+/* ====== TIME HELPERS (MSK, MIX) ====== */
+
+function getMoscowNow() {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  return new Date(utc + 3 * 3600000);
+}
+
+function getNextMoscowMidnight() {
+  const msk = getMoscowNow();
+  const next = new Date(msk);
+  next.setHours(24, 0, 0, 0);
+  return next;
+}
+
+function formatDiffToMidnight() {
+  const now = getMoscowNow();
+  const next = getNextMoscowMidnight();
+  const diffMs = next - now;
+  if (diffMs <= 0) return "00:00";
+
+  const totalSec = Math.floor(diffMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const hh = String(h).padStart(2, "0");
+  const mm = String(m).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function getTodayMixMode() {
+  const msk = getMoscowNow();
+  const startOfYear = new Date(msk.getFullYear(), 0, 0);
+  const diff = msk - startOfYear;
+  const oneDay = 1000 * 60 * 60 * 24;
+  const dayOfYear = Math.floor(diff / oneDay);
+  const modes = ["meteor_fall", "color_wars"];
+  const idx = dayOfYear % modes.length;
+  return modes[idx];
+}
+
 /* ====== LOAD USER & SETTINGS ====== */
 
 async function loadUser() {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
   const username = tg?.initDataUnsafe?.user?.username || "guest";
+  const start_param = tg?.initDataUnsafe?.start_param || null;
 
   try {
     const res = await fetch(API + "/me", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegram_id, username })
+      body: JSON.stringify({ telegram_id, username, start_param })
     });
 
     const data = await res.json();
@@ -44,7 +86,7 @@ async function loadSettings() {
   try {
     const res = await fetch(API + "/settings");
     const data = await res.json();
-    if (data.ok) currentSettings = data;
+    if (data.ok) currentSettings = data.settings;
   } catch (e) {
     console.log("settings error", e);
   }
@@ -55,6 +97,11 @@ async function loadSettings() {
 async function renderGames() {
   const root = document.getElementById("screen-content");
   if (!root) return;
+
+  if (mixTimerInterval) {
+    clearInterval(mixTimerInterval);
+    mixTimerInterval = null;
+  }
 
   let tournamentHTML = "";
 
@@ -81,63 +128,73 @@ async function renderGames() {
     console.log("tournament error", e);
   }
 
+  const mixModeToday = getTodayMixMode();
+  const mixModeText =
+    mixModeToday === "meteor_fall"
+      ? "Уклоняйся от метеоритов!"
+      : "Красочные войны!";
+
+  const mixTimerText = formatDiffToMidnight();
+
   root.innerHTML = `
     ${tournamentHTML}
 
-    <article class="game-card">
+    <article class="game-card" onclick="joinGame('ice_arena')">
       <div class="game-info">
         <div class="game-title">Ice Arena</div>
         <div class="game-desc">Классическое "тот, на ком остановится шайба — заберёт весь банк!"</div>
-        <button class="btn" onclick="joinGame('ice_arena')">Играть</button>
       </div>
       <div class="game-image game-ice">картинка</div>
     </article>
 
-    <article class="game-card">
+    <article class="game-card" onclick="joinGame('knockout')">
       <div class="game-info">
         <div class="game-title">Выбывание</div>
         <div class="game-desc">Стенка убирается, кто останется последним...?</div>
-        <button class="btn" onclick="joinGame('knockout')">Играть</button>
       </div>
       <div class="game-image game-knockout">картинка</div>
     </article>
 
-    <article class="game-card">
+    <article class="game-card" onclick="joinGame('wheel')">
       <div class="game-info">
         <div class="game-title">Колесо</div>
         <div class="game-desc">Выиграет ли шанс?</div>
-        <button class="btn" onclick="joinGame('wheel')">Играть</button>
       </div>
       <div class="game-image game-wheel">картинка</div>
     </article>
 
-    <article class="game-card">
+    <article class="game-card" onclick="joinGame('race_balls')">
       <div class="game-info">
         <div class="game-title">Гонка шаров</div>
         <div class="game-desc">Приедешь первым?</div>
-        <button class="btn" onclick="joinGame('race_balls')">Играть</button>
       </div>
       <div class="game-image game-race">картинка</div>
     </article>
 
-    <article class="game-card">
+    <article class="game-card" onclick="joinGame('color_arena')">
       <div class="game-info">
         <div class="game-title">Красочная арена</div>
         <div class="game-desc">Закрась больше других</div>
-        <button class="btn" onclick="joinGame('color_arena')">Играть</button>
       </div>
       <div class="game-image game-color">картинка</div>
     </article>
 
-    <article class="game-card">
+    <article class="game-card" onclick="joinGame('mix_mode')">
       <div class="game-info">
         <div class="game-title">Микс режим</div>
-        <div class="game-desc">Уклоняйся от метеоритов!</div>
-        <button class="btn" onclick="joinGame('mix_mode')">Играть</button>
+        <div class="game-desc">${mixModeText}</div>
+        <div class="mix-timer" id="mix-timer">Смена режима через ${mixTimerText}</div>
       </div>
       <div class="game-image game-mix">картинка</div>
     </article>
   `;
+
+  const mixTimerEl = document.getElementById("mix-timer");
+  if (mixTimerEl) {
+    mixTimerInterval = setInterval(() => {
+      mixTimerEl.innerText = "Смена режима через " + formatDiffToMidnight();
+    }, 60000);
+  }
 }
 
 /* ====== JOIN GAME → LOBBY ====== */
@@ -160,6 +217,12 @@ async function joinGame(mode) {
       return;
     }
 
+    currentUser = data.user;
+    const balEl = document.getElementById("header-balance");
+    if (balEl && currentUser) {
+      balEl.innerText = currentUser.stars_balance + " ⭐";
+    }
+
     renderLobby(mode, data.game_id);
   } catch (e) {
     alertInApp("Ошибка соединения");
@@ -169,6 +232,11 @@ async function joinGame(mode) {
 function renderLobby(mode, id) {
   const root = document.getElementById("screen-content");
   if (!root) return;
+
+  if (mixTimerInterval) {
+    clearInterval(mixTimerInterval);
+    mixTimerInterval = null;
+  }
 
   root.innerHTML = `
     <section class="block">
@@ -189,6 +257,11 @@ function renderLobby(mode, id) {
 function renderBalance() {
   const root = document.getElementById("screen-content");
   if (!root) return;
+
+  if (mixTimerInterval) {
+    clearInterval(mixTimerInterval);
+    mixTimerInterval = null;
+  }
 
   const stars = currentUser?.stars_balance ?? 0;
 
@@ -211,12 +284,20 @@ function renderProfile() {
   const root = document.getElementById("screen-content");
   if (!root || !currentUser) return;
 
+  if (mixTimerInterval) {
+    clearInterval(mixTimerInterval);
+    mixTimerInterval = null;
+  }
+
   const botUsername = tg?.initDataUnsafe?.bot?.username || "allpvpgames_bot";
   const refLink = `https://t.me/${botUsername}?start=ref_${currentUser.telegram_id}`;
 
   const refCount = currentUser.ref_count || 0;
   const refStars = currentUser.ref_earned_stars || 0;
   const refPercent = currentUser.ref_earned_percent || 0;
+  const refPending =
+    (currentUser.ref_pending_stars || 0) +
+    (currentUser.ref_pending_percent || 0);
 
   root.innerHTML = `
     <section class="block">
@@ -234,7 +315,7 @@ function renderProfile() {
     </section>
 
     <section class="block">
-      <div class="block-title">Реферальная система</div>
+      <div class="block-title">Реферальная программа</div>
 
       <div class="ref-block">
         <div class="ref-link">${refLink}</div>
@@ -242,8 +323,11 @@ function renderProfile() {
       </div>
 
       <div class="profile-row"><span>Приглашено</span><span>${refCount}</span></div>
-      <div class="profile-row"><span>Заработано звёзд</span><span>${refStars} ⭐</span></div>
-      <div class="profile-row"><span>Заработано %</span><span>${refPercent} ⭐</span></div>
+      <div class="profile-row"><span>Всего заработано звёзд</span><span>${refStars} ⭐</span></div>
+      <div class="profile-row"><span>Всего заработано %</span><span>${refPercent} ⭐</span></div>
+      <div class="profile-row"><span>Доступно к сбору</span><span>${refPending} ⭐</span></div>
+
+      <button class="btn" style="margin-top:10px;" onclick="collectRef()">Собрать</button>
 
       <div class="text-muted" style="margin-top:8px;">
         +10 ⭐ за каждого реферала<br>
@@ -262,6 +346,39 @@ function toggleProfileSettings() {
 function copyRef(text) {
   navigator.clipboard.writeText(text);
   alertInApp("Ссылка скопирована");
+}
+
+async function collectRef() {
+  const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
+  if (!telegram_id) {
+    alertInApp("Нет Telegram ID");
+    return;
+  }
+
+  try {
+    const res = await fetch(API + "/ref/collect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_id })
+    });
+
+    const data = await res.json();
+    if (!data.ok) {
+      alertInApp("Ошибка: " + (data.error || "UNKNOWN"));
+      return;
+    }
+
+    currentUser = data.user;
+    const balEl = document.getElementById("header-balance");
+    if (balEl && currentUser) {
+      balEl.innerText = currentUser.stars_balance + " ⭐";
+    }
+
+    alertInApp("Собрано: " + data.collected + " ⭐");
+    renderProfile();
+  } catch (e) {
+    alertInApp("Ошибка соединения");
+  }
 }
 
 /* ====== ADMIN PANEL ====== */
@@ -284,6 +401,11 @@ function openAdminPanel() {
 async function renderTournament() {
   const root = document.getElementById("screen-content");
   if (!root) return;
+
+  if (mixTimerInterval) {
+    clearInterval(mixTimerInterval);
+    mixTimerInterval = null;
+  }
 
   try {
     const res = await fetch(API + "/tournament/active");
