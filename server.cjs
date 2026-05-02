@@ -38,7 +38,10 @@ db.serialize(() => {
       mode TEXT,
       bank INTEGER DEFAULT 0,
       status TEXT DEFAULT 'waiting',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      winner_telegram_id INTEGER,
+      winner_username TEXT,
+      replay_json TEXT
     )
   `);
 
@@ -58,6 +61,8 @@ db.serialize(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       mode TEXT,
       description TEXT,
+      target_game_id INTEGER,
+      duration_seconds INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -70,6 +75,18 @@ db.serialize(() => {
   `);
 
   db.run(`INSERT OR IGNORE INTO settings (id, dummy) VALUES (1, 0)`);
+
+  db.run("ALTER TABLE games ADD COLUMN winner_telegram_id INTEGER", () => {});
+  db.run("ALTER TABLE games ADD COLUMN winner_username TEXT", () => {});
+  db.run("ALTER TABLE games ADD COLUMN replay_json TEXT", () => {});
+  db.run(
+    "ALTER TABLE special_games ADD COLUMN target_game_id INTEGER",
+    () => {}
+  );
+  db.run(
+    "ALTER TABLE special_games ADD COLUMN duration_seconds INTEGER",
+    () => {}
+  );
 });
 
 app.use(bodyParser.json());
@@ -82,6 +99,19 @@ function getUserByTelegramId(telegram_id) {
     db.get(
       "SELECT * FROM users WHERE telegram_id = ?",
       [telegram_id],
+      (err, row) => {
+        if (err) return reject(err);
+        resolve(row || null);
+      }
+    );
+  });
+}
+
+function getUserByUsername(username) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      "SELECT * FROM users WHERE username = ?",
+      [username],
       (err, row) => {
         if (err) return reject(err);
         resolve(row || null);
@@ -156,12 +186,11 @@ function isAdmin(telegram_id) {
 
 // ===== in-memory игры / лобби =====
 
-const activeGames = new Map();
+const activeGames = new Map(); // gameId -> { id, mode, bank, status, players, timer }
 
-function findOrCreateGameForMode(mode, bet) {
+function findOrCreateGameForMode(mode) {
   for (const g of activeGames.values()) {
     if (g.mode === mode && g.status === "waiting") {
-      g.bank += bet;
       return g;
     }
   }
@@ -169,13 +198,13 @@ function findOrCreateGameForMode(mode, bet) {
   return new Promise((resolve, reject) => {
     db.run(
       "INSERT INTO games (mode, bank, status) VALUES (?, ?, 'waiting')",
-      [mode, bet],
+      [mode, 0],
       function (err) {
         if (err) return reject(err);
         const game = {
           id: this.lastID,
           mode,
-          bank: bet,
+          bank: 0,
           status: "waiting",
           players: [],
           timer: null
@@ -205,7 +234,183 @@ async function startGameIfReady(gameId) {
     players: game.players
   });
 
-  game.timer = setTimeout(() => finishGame(gameId), 5000);
+  setTimeout(() => finishGame(gameId), 3000);
+}
+
+// ===== REPLAY BUILDERS =====
+
+function buildIceArenaReplay(game, winnerIndex) {
+  const steps = [];
+  const playersCount = game.players.length;
+  if (playersCount === 0) return steps;
+
+  const totalSteps = 30;
+  let currentIndex = Math.floor(Math.random() * playersCount);
+
+  for (let i = 0; i < totalSteps - 1; i++) {
+    const delta = Math.floor(Math.random() * 3) - 1;
+    currentIndex = (currentIndex + delta + playersCount) % playersCount;
+    steps.push({ playerIndex: currentIndex });
+  }
+
+  steps.push({ playerIndex: winnerIndex, isWinner: true });
+  return steps;
+}
+
+function buildRaceBallsReplay(game, winnerIndex) {
+  const steps = [];
+  const playersCount = game.players.length;
+  if (playersCount === 0) return steps;
+
+  const totalFrames = 40;
+  const finishX = 1.0;
+
+  const speeds = game.players.map(() => 0.015 + Math.random() * 0.02);
+  const positions = game.players.map(() => 0);
+
+  for (let f = 0; f < totalFrames; f++) {
+    for (let i = 0; i < playersCount; i++) {
+      positions[i] += speeds[i];
+      if (positions[i] > finishX) positions[i] = finishX;
+    }
+    steps.push({
+      frame: f,
+      positions: [...positions],
+      winnerIndex: null
+    });
+  }
+
+  steps.push({
+    frame: totalFrames,
+    positions: positions.map((_, i) => (i === winnerIndex ? finishX : positions[i])),
+    winnerIndex
+  });
+
+  return steps;
+}
+
+function buildKnockoutReplay(game, winnerIndex) {
+  const steps = [];
+  const playersCount = game.players.length;
+  if (playersCount === 0) return steps;
+
+  const alive = new Array(playersCount).fill(true);
+  let remaining = playersCount;
+
+  while (remaining > 1) {
+    let idx;
+    do {
+      idx = Math.floor(Math.random() * playersCount);
+    } while (!alive[idx] || idx === winnerIndex);
+
+    alive[idx] = false;
+    remaining--;
+
+    steps.push({
+      eliminatedIndex: idx,
+      alive: [...alive]
+    });
+  }
+
+  steps.push({
+    winnerIndex,
+    alive: alive.map((_, i) => i === winnerIndex)
+  });
+
+  return steps;
+}
+
+function buildColorArenaReplay(game, winnerIndex) {
+  const steps = [];
+  const playersCount = game.players.length;
+  if (playersCount === 0) return steps;
+
+  const gridSize = 8;
+  const grid = Array.from({ length: gridSize }, () =>
+    Array(gridSize).fill(-1)
+  );
+
+  const totalSteps = 40;
+
+  for (let s = 0; s < totalSteps; s++) {
+    const playerIndex = Math.floor(Math.random() * playersCount);
+    const x = Math.floor(Math.random() * gridSize);
+    const y = Math.floor(Math.random() * gridSize);
+    grid[y][x] = playerIndex;
+
+    steps.push({
+      step: s,
+      x,
+      y,
+      playerIndex
+    });
+  }
+
+  steps.push({
+    winnerIndex,
+    finalGrid: grid
+  });
+
+  return steps;
+}
+
+function buildMeteorReplay(game, winnerIndex) {
+  const steps = [];
+  const playersCount = game.players.length;
+  if (playersCount === 0) return steps;
+
+  const totalFrames = 40;
+  const alive = new Array(playersCount).fill(true);
+
+  for (let f = 0; f < totalFrames; f++) {
+    const meteorX = Math.random();
+    const meteorY = f / totalFrames;
+
+    let hitIndex = null;
+    if (Math.random() < 0.2) {
+      const candidates = [];
+      for (let i = 0; i < playersCount; i++) {
+        if (alive[i] && i !== winnerIndex) candidates.push(i);
+      }
+      if (candidates.length > 0) {
+        hitIndex =
+          candidates[Math.floor(Math.random() * candidates.length)];
+        alive[hitIndex] = false;
+      }
+    }
+
+    steps.push({
+      frame: f,
+      meteorX,
+      meteorY,
+      hitIndex,
+      alive: [...alive]
+    });
+  }
+
+  steps.push({
+    winnerIndex,
+    alive: alive.map((_, i) => i === winnerIndex)
+  });
+
+  return steps;
+}
+
+function buildReplayForMode(game, winnerIndex) {
+  switch (game.mode) {
+    case "ice_arena":
+      return buildIceArenaReplay(game, winnerIndex);
+    case "race_balls":
+      return buildRaceBallsReplay(game, winnerIndex);
+    case "knockout":
+      return buildKnockoutReplay(game, winnerIndex);
+    case "color_arena":
+      return buildColorArenaReplay(game, winnerIndex);
+    case "meteor_fall":
+      return buildMeteorReplay(game, winnerIndex);
+    default:
+      return null;
+  }
 }
 
 async function finishGame(gameId) {
@@ -220,14 +425,32 @@ async function finishGame(gameId) {
     return;
   }
 
-  const winnerIndex = Math.floor(Math.random() * game.players.length);
+  // шанс победы ∝ ставке
+  let totalBet = 0;
+  for (const p of game.players) totalBet += p.bet || 0;
+  if (totalBet <= 0) totalBet = game.players.length;
+
+  let r = Math.random() * totalBet;
+  let winnerIndex = 0;
+  for (let i = 0; i < game.players.length; i++) {
+    const b = game.players[i].bet || 1;
+    if (r < b) {
+      winnerIndex = i;
+      break;
+    }
+    r -= b;
+  }
+
   const winner = game.players[winnerIndex];
 
   await updateUserBalance(winner.telegram_id, game.bank);
 
+  const replay = buildReplayForMode(game, winnerIndex);
+  const replayJson = replay ? JSON.stringify(replay) : null;
+
   db.run(
-    "UPDATE games SET status = 'finished' WHERE id = ?, winner_telegram_id = ?, winner_username = ?",
-    [gameId, winner.telegram_id, winner.username]
+    "UPDATE games SET status = 'finished', winner_telegram_id = ?, winner_username = ?, replay_json = ?, bank = ? WHERE id = ?",
+    [winner.telegram_id, winner.username, replayJson, game.bank, gameId]
   );
 
   broadcastToGame(gameId, {
@@ -236,7 +459,9 @@ async function finishGame(gameId) {
     mode: game.mode,
     bank: game.bank,
     winner_telegram_id: winner.telegram_id,
-    winner_username: winner.username
+    winner_username: winner.username,
+    replay: replay || null,
+    players: game.players
   });
 
   setTimeout(() => {
@@ -324,6 +549,47 @@ app.get("/api/tournament/active", (req, res) => {
   );
 });
 
+app.get("/api/games/history", (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || "20", 10), 50);
+
+  db.all(
+    "SELECT id, mode, bank, status, created_at, winner_telegram_id, winner_username FROM games WHERE status = 'finished' ORDER BY id DESC LIMIT ?",
+    [limit],
+    (err, rows) => {
+      if (err) return res.json({ ok: false, error: "DB_ERROR" });
+      res.json({ ok: true, games: rows || [] });
+    }
+  );
+});
+
+app.get("/api/games/replay/:id", (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.json({ ok: false, error: "BAD_ID" });
+
+  db.get(
+    "SELECT id, mode, bank, replay_json FROM games WHERE id = ?",
+    [id],
+    (err, row) => {
+      if (err || !row) return res.json({ ok: false, error: "NOT_FOUND" });
+      let replay = null;
+      try {
+        replay = row.replay_json ? JSON.parse(row.replay_json) : null;
+      } catch {
+        replay = null;
+      }
+      res.json({
+        ok: true,
+        game: {
+          id: row.id,
+          mode: row.mode,
+          bank: row.bank,
+          replay
+        }
+      });
+    }
+  );
+});
+
 app.post("/api/game/join", async (req, res) => {
   try {
     const { telegram_id, username, mode, amount } = req.body;
@@ -368,7 +634,7 @@ app.post("/api/game/join", async (req, res) => {
       );
     }
 
-    let game = await findOrCreateGameForMode(mode, bet);
+    let game = await findOrCreateGameForMode(mode);
 
     if (!game.players) game.players = [];
     const already = game.players.find(
@@ -380,6 +646,7 @@ app.post("/api/game/join", async (req, res) => {
         username: username || "player",
         bet
       });
+      game.bank += bet;
     }
 
     db.run("UPDATE games SET bank = ? WHERE id = ?", [game.bank, game.id]);
@@ -459,27 +726,37 @@ app.post("/api/ref/collect", async (req, res) => {
 });
 
 // === ADMIN API ===
+// теперь по username
 
-app.post("/api/admin/send-stars", (req, res) => {
-  const { admin_telegram_id, target_telegram_id, amount } = req.body;
+app.post("/api/admin/send-stars", async (req, res) => {
+  const { admin_telegram_id, target_username, amount } = req.body;
 
   if (!isAdmin(admin_telegram_id)) {
     return res.json({ ok: false, error: "NOT_ADMIN" });
   }
 
   const amt = parseInt(amount, 10) || 0;
-  if (!target_telegram_id || amt <= 0) {
+  if (!target_username || amt <= 0) {
     return res.json({ ok: false, error: "BAD_PARAMS" });
   }
 
-  db.run(
-    "UPDATE users SET stars_balance = stars_balance + ? WHERE telegram_id = ?",
-    [amt, target_telegram_id],
-    function (err) {
-      if (err) return res.json({ ok: false, error: "DB_ERROR" });
-      res.json({ ok: true });
+  try {
+    const user = await getUserByUsername(target_username);
+    if (!user) {
+      return res.json({ ok: false, error: "USER_NOT_FOUND" });
     }
-  );
+
+    db.run(
+      "UPDATE users SET stars_balance = stars_balance + ? WHERE telegram_id = ?",
+      [amt, user.telegram_id],
+      function (err) {
+        if (err) return res.json({ ok: false, error: "DB_ERROR" });
+        res.json({ ok: true });
+      }
+    );
+  } catch (e) {
+    res.json({ ok: false, error: "SERVER_ERROR" });
+  }
 });
 
 app.post("/api/admin/create-tournament", (req, res) => {
@@ -503,15 +780,16 @@ app.post("/api/admin/create-tournament", (req, res) => {
 });
 
 app.post("/api/admin/create-special", (req, res) => {
-  const { admin_telegram_id, mode, description } = req.body;
+  const { admin_telegram_id, mode, description, target_game_id, duration_seconds } =
+    req.body;
 
   if (!isAdmin(admin_telegram_id)) {
     return res.json({ ok: false, error: "NOT_ADMIN" });
   }
 
   db.run(
-    "INSERT INTO special_games (mode, description) VALUES (?, ?)",
-    [mode || "special", description || ""],
+    "INSERT INTO special_games (mode, description, target_game_id, duration_seconds) VALUES (?, ?, ?, ?)",
+    [mode || "special", description || "", target_game_id || null, duration_seconds || null],
     function (err) {
       if (err) return res.json({ ok: false, error: "DB_ERROR" });
       res.json({ ok: true, id: this.lastID });
