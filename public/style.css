@@ -1,4 +1,6 @@
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -7,11 +9,15 @@ body {
   font-family: system-ui, sans-serif;
 }
 
-#app { padding-bottom: 80px; }
+#app {
+  padding-bottom: 80px;
+}
 
 /* HEADER */
 
-#main-header { padding: 16px; }
+#main-header {
+  padding: 16px;
+}
 
 .title-row {
   display: flex;
@@ -19,7 +25,10 @@ body {
   align-items: center;
 }
 
-.app-title { font-size: 22px; font-weight: 700; }
+.app-title {
+  font-size: 22px;
+  font-weight: 700;
+}
 
 .header-right {
   display: flex;
@@ -35,31 +44,6 @@ body {
   border: 1px solid rgba(255,255,255,0.12);
 }
 
-.settings-icon {
-  font-size: 20px;
-  cursor: pointer;
-  opacity: 0.8;
-}
-
-.settings-panel {
-  display: none;
-  margin-top: 10px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.settings-btn {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 6px;
-  border-radius: 10px;
-  border: none;
-  background: rgba(255,255,255,0.1);
-  color: #fff;
-  font-size: 14px;
-}
-
 /* BLOCKS */
 
 .block {
@@ -70,7 +54,22 @@ body {
   border: 1px solid rgba(70,90,180,0.35);
 }
 
-.block-title { font-size: 16px; font-weight: 600; }
+.block-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.text-muted {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.profile-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 0;
+}
 
 /* TOURNAMENT */
 
@@ -78,6 +77,21 @@ body {
   display: flex;
   gap: 10px;
   align-items: center;
+}
+
+.tournament-text {
+  flex: 1;
+}
+
+.tournament-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tournament-modes {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 4px;
 }
 
 .tournament-image {
@@ -106,8 +120,16 @@ body {
   padding: 12px;
 }
 
-.game-title { font-size: 15px; font-weight: 600; }
-.game-desc { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+.game-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.game-desc {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
 
 .game-image {
   width: 90px;
@@ -119,12 +141,29 @@ body {
 
 /* Soft colors */
 
-.game-ice { background: #f7e39a; }
-.game-knockout { background: #f3a3a3; }
-.game-wheel { background: #d9dde6; }
-.game-race { background: #f6c28b; }
-.game-color { background: #d7c0f5; }
-.game-mix { background: #b9d7ff; }
+.game-ice {
+  background: #f7e39a;
+}
+
+.game-knockout {
+  background: #f3a3a3;
+}
+
+.game-wheel {
+  background: #d9dde6;
+}
+
+.game-race {
+  background: #f6c28b;
+}
+
+.game-color {
+  background: #d7c0f5;
+}
+
+.game-mix {
+  background: #b9d7ff;
+}
 
 /* BUTTONS */
 
@@ -136,6 +175,7 @@ body {
   color: #fff;
   font-size: 14px;
   margin-top: 8px;
+  cursor: pointer;
 }
 
 .btn-secondary {
@@ -164,9 +204,12 @@ body {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  cursor: pointer;
 }
 
-.nav-btn-active { color: #fff; }
+.nav-btn-active {
+  color: #fff;
+}
 
 /* IN-APP ALERT */
 
@@ -186,4 +229,65 @@ body {
 @keyframes fade {
   from { opacity: 0; transform: translate(-50%, 10px); }
   to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* PROFILE SETTINGS + REFERRALS */
+
+.settings-icon-profile {
+  font-size: 20px;
+  cursor: pointer;
+  opacity: 0.8;
+  float: right;
+}
+
+.settings-panel-profile {
+  display: none;
+  margin: 0 14px 14px 14px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.settings-btn {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 6px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 14px;
+}
+
+.ref-block {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.ref-link {
+  font-size: 13px;
+  word-break: break-all;
+  opacity: 0.9;
+}
+
+.copy-btn {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* BALANCE */
+
+.balance-value {
+  font-size: 26px;
+  font-weight: 700;
+  margin-top: 4px;
 }
