@@ -67,20 +67,19 @@ function connectWS() {
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    if (data.type === "auth_ok") {
-      // ничего
-    }
+
     if (data.type === "lobby_state") {
       currentLobby = data.lobby;
       updateLobbyUI();
     }
+
     if (data.type === "game_result") {
       alertInApp("Игра #" + data.game.id + " завершена!");
       currentLobby = null;
       updateLobbyUI();
-      // можно сразу открыть реплей
       startReplay(data.game);
     }
+
     if (data.type === "error") {
       alertInApp(data.message || "Ошибка");
     }
@@ -125,29 +124,30 @@ function updateLobbyUI() {
   playersEl.textContent =
     "Игроки - " + currentLobby.players.length + "/2 для старта";
 
-  if (currentLobby.status === "waiting") {
-    statusEl.textContent = "Ожидание игроков...";
-  } else {
-    statusEl.textContent = "Игра идёт...";
-  }
+  statusEl.textContent =
+    currentLobby.status === "waiting" ? "Ожидание игроков..." : "Игра идёт...";
 
   listEl.innerHTML = "";
   currentLobby.players.forEach((p) => {
     const row = document.createElement("div");
     row.className = "lobby-player-row";
+
     const ava = document.createElement("div");
     ava.className = "lobby-player-avatar";
     setAvatar(ava, p.avatar);
+
     const name = document.createElement("div");
     name.className = "lobby-player-name";
     name.textContent = p.username ? "@" + p.username : p.name || "Игрок";
+
     row.appendChild(ava);
     row.appendChild(name);
     listEl.appendChild(row);
   });
 }
 
-// ===== History =====
+// ===== История =====
+
 let currentFilter = "latest";
 
 async function loadHistory() {
@@ -167,6 +167,7 @@ async function loadHistory() {
 function renderHistory(games) {
   const list = $("historyList");
   list.innerHTML = "";
+
   games.forEach((g) => {
     const item = document.createElement("div");
     item.className = "history-item";
@@ -175,12 +176,12 @@ function renderHistory(games) {
     main.className = "history-item-main";
 
     const winner = g.players.find((p) => p.id === g.winnerId);
+
     const ava = document.createElement("div");
     ava.className = "history-avatar";
     setAvatar(ava, winner ? winner.avatar : null);
 
     const text = document.createElement("div");
-    const modeName = g.mode;
     const pot = g.bet * g.players.length;
     const date = new Date(g.createdAt);
     const timeStr =
@@ -189,7 +190,7 @@ function renderHistory(games) {
       date.getMinutes().toString().padStart(2, "0");
 
     text.innerHTML = `
-      <div>#${g.id} • ${modeName}</div>
+      <div>#${g.id} • ${g.mode}</div>
       <div class="history-meta">
         Победитель: ${
           winner
@@ -204,21 +205,22 @@ function renderHistory(games) {
       </div>
     `;
 
-    main.appendChild(ava);
-    main.appendChild(text);
-
     const btn = document.createElement("button");
     btn.className = "history-replay-btn";
     btn.textContent = "Повтор";
     btn.addEventListener("click", () => playReplayFromHistory(g.id));
 
+    main.appendChild(ava);
+    main.appendChild(text);
     item.appendChild(main);
     item.appendChild(btn);
+
     list.appendChild(item);
   });
 }
 
-// ===== Replay =====
+// ===== Реплей =====
+
 let replayTimer = null;
 
 async function playReplayFromHistory(id) {
@@ -263,22 +265,27 @@ function startReplay(game) {
       replayTimer = null;
       return;
     }
+
     const frame = frames[frameIndex];
     frame.forEach((f) => {
       const el = playerEls[f.id];
       if (!el) return;
+
       const x = Math.min(1, f.pos / 100);
       const yIndex = players.findIndex((p) => p.id === f.id);
       const y = (yIndex + 1) / (players.length + 1);
+
       el.style.left = 10 + x * (width - 30) + "px";
       el.style.top = 40 + y * (height - 60) + "px";
       el.style.opacity = f.alive ? "1" : "0.3";
     });
+
     frameIndex++;
   }, 200);
 }
 
 // ===== Init =====
+
 document.addEventListener("DOMContentLoaded", async () => {
   const params = new URLSearchParams(window.location.search);
   currentMode = params.get("mode") || "ice_arena";
@@ -286,16 +293,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   await fetchMe();
   connectWS();
 
-  document
-    .querySelectorAll(".lobby-bet-btn")
-    .forEach((btn) => {
-      const bet = btn.dataset.bet
-        ? Number(btn.dataset.bet)
-        : null;
-      if (bet) {
-        btn.addEventListener("click", () => joinLobby(bet));
-      }
-    });
+  document.querySelectorAll(".lobby-bet-btn").forEach((btn) => {
+    const bet = btn.dataset.bet ? Number(btn.dataset.bet) : null;
+    if (bet) {
+      btn.addEventListener("click", () => joinLobby(bet));
+    }
+  });
 
   $("bet-custom").addEventListener("click", () => {
     const v = prompt("Введите свою ставку (звёзды):", "10");
@@ -322,22 +325,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("historyOverlay").style.display = "none";
   });
 
-  document
-    .querySelectorAll(".history-filter-btn")
-    .forEach((btn) => {
-      btn.addEventListener("click", () => {
-        currentFilter = btn.dataset.filter;
-        document
-          .querySelectorAll(".history-filter-btn")
-          .forEach((b) =>
-            b.classList.toggle(
-              "history-filter-active",
-              b === btn
-            )
-          );
-        loadHistory();
-      });
+  document.querySelectorAll(".history-filter-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentFilter = btn.dataset.filter;
+      document
+        .querySelectorAll(".history-filter-btn")
+        .forEach((b) =>
+          b.classList.toggle("history-filter-active", b === btn)
+        );
+      loadHistory();
     });
+  });
 
   $("replayClose").addEventListener("click", () => {
     $("replayOverlay").style.display = "none";
@@ -345,3 +343,4 @@ document.addEventListener("DOMContentLoaded", async () => {
     replayTimer = null;
   });
 });
+
