@@ -9,32 +9,36 @@
 <body>
 
   <div id="app">
+
     <header id="main-header">
       <div class="title-row">
         <div class="app-title">AllPvpGamesHub</div>
-        <div class="app-balance" id="header-balance">Баланс: — ⭐</div>
+        <div class="header-right">
+          <div class="app-balance" id="header-balance">— ⭐</div>
+          <div class="settings-icon" onclick="toggleSettings()">⚙️</div>
+        </div>
       </div>
-      <div class="app-subtitle">PvP‑игры, турниры и звёзды</div>
+      <div class="settings-panel" id="settings-panel">
+        <button class="settings-btn" onclick="alertInApp('Смена языка позже')">Сменить язык</button>
+        <button class="settings-btn" onclick="alertInApp('Стример‑режим позже')">Стример‑режим</button>
+        <button class="settings-btn" onclick="openAdminPanel()">Админ‑панель</button>
+      </div>
     </header>
 
-    <main id="screen-content">
-      <!-- сюда рендерятся экраны -->
-    </main>
+    <main id="screen-content"></main>
 
     <nav class="bottom-nav">
       <button class="nav-btn nav-btn-active" data-tab="games" onclick="setTab('games')">
-        <span class="nav-icon">🎮</span>
-        <span class="nav-label">Игры</span>
+        🎮<span>Игры</span>
       </button>
       <button class="nav-btn" data-tab="balance" onclick="setTab('balance')">
-        <span class="nav-icon">💰</span>
-        <span class="nav-label">Баланс</span>
+        💰<span>Баланс</span>
       </button>
       <button class="nav-btn" data-tab="profile" onclick="setTab('profile')">
-        <span class="nav-icon">👤</span>
-        <span class="nav-label">Профиль</span>
+        👤<span>Профиль</span>
       </button>
     </nav>
+
   </div>
 
   <script src="app.js"></script>
