@@ -113,6 +113,7 @@ body {
   overflow: hidden;
   margin: 14px;
   border: 1px solid rgba(255,255,255,0.06);
+  cursor: pointer;
 }
 
 .game-info {
@@ -257,6 +258,7 @@ body {
   background: rgba(255,255,255,0.1);
   color: #fff;
   font-size: 14px;
+  cursor: pointer;
 }
 
 .ref-block {
@@ -284,10 +286,16 @@ body {
   cursor: pointer;
 }
 
-/* BALANCE */
-
 .balance-value {
   font-size: 26px;
   font-weight: 700;
+  margin-top: 4px;
+}
+
+/* MIX TIMER */
+
+.mix-timer {
+  font-size: 11px;
+  opacity: 0.8;
   margin-top: 4px;
 }
