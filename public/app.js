@@ -15,63 +15,70 @@ function alertInApp(text) {
   setTimeout(() => box.remove(), 2200);
 }
 
-/* ====== SETTINGS ====== */
-
-function toggleSettings() {
-  const panel = document.getElementById("settings-panel");
-  panel.style.display = panel.style.display === "block" ? "none" : "block";
-}
-
-/* ====== LOAD USER ====== */
+/* ====== LOAD USER & SETTINGS ====== */
 
 async function loadUser() {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
   const username = tg?.initDataUnsafe?.user?.username || "guest";
 
-  const res = await fetch(API + "/me", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ telegram_id, username })
-  });
+  try {
+    const res = await fetch(API + "/me", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_id, username })
+    });
 
-  const data = await res.json();
-  if (data.ok) currentUser = data.user;
+    const data = await res.json();
+    if (data.ok) currentUser = data.user;
+  } catch (e) {
+    console.log("me error", e);
+  }
 
-  document.getElementById("header-balance").innerText =
-    currentUser.stars_balance + " ⭐";
+  const balEl = document.getElementById("header-balance");
+  if (balEl && currentUser) {
+    balEl.innerText = currentUser.stars_balance + " ⭐";
+  }
 }
 
 async function loadSettings() {
-  const res = await fetch(API + "/settings");
-  const data = await res.json();
-  if (data.ok) currentSettings = data;
+  try {
+    const res = await fetch(API + "/settings");
+    const data = await res.json();
+    if (data.ok) currentSettings = data;
+  } catch (e) {
+    console.log("settings error", e);
+  }
 }
 
-/* ====== RENDER: GAMES ====== */
+/* ====== GAMES SCREEN ====== */
 
 async function renderGames() {
   const root = document.getElementById("screen-content");
-
-  // Load tournament
-  const res = await fetch(API + "/tournament/active");
-  const t = await res.json();
+  if (!root) return;
 
   let tournamentHTML = "";
 
-  if (t.ok && t.tournament) {
-    tournamentHTML = `
-      <section class="block">
-        <div class="block-title">АКТИВНЫЙ ТУРНИР</div>
-        <div class="tournament-banner">
-          <div class="tournament-text">
-            <div class="tournament-title">${t.tournament.name}</div>
-            <div class="tournament-modes">${t.tournament.modes.join(", ")}</div>
-            <button class="btn-secondary btn" onclick="renderTournament()">Открыть турнир</button>
+  try {
+    const res = await fetch(API + "/tournament/active");
+    const t = await res.json();
+
+    if (t.ok && t.tournament) {
+      tournamentHTML = `
+        <section class="block">
+          <div class="block-title">АКТИВНЫЙ ТУРНИР</div>
+          <div class="tournament-banner">
+            <div class="tournament-text">
+              <div class="tournament-title">${t.tournament.name}</div>
+              <div class="tournament-modes">${(t.tournament.modes || []).join(", ")}</div>
+              <button class="btn btn-secondary" onclick="renderTournament()">Открыть турнир</button>
+            </div>
+            <div class="tournament-image">картинка</div>
           </div>
-          <div class="tournament-image">картинка</div>
-        </div>
-      </section>
-    `;
+        </section>
+      `;
+    }
+  } catch (e) {
+    console.log("tournament error", e);
   }
 
   root.innerHTML = `
@@ -139,26 +146,29 @@ async function joinGame(mode) {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
   const username = tg?.initDataUnsafe?.user?.username || "guest";
 
-  const res = await fetch(API + "/game/join", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ telegram_id, username, mode, amount: 1 })
-  });
+  try {
+    const res = await fetch(API + "/game/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_id, username, mode, amount: 1 })
+    });
 
-  const data = await res.json();
+    const data = await res.json();
 
-  if (!data.ok) {
-    alertInApp("Ошибка: " + data.error);
-    return;
+    if (!data.ok) {
+      alertInApp("Ошибка: " + (data.error || "UNKNOWN"));
+      return;
+    }
+
+    renderLobby(mode, data.game_id);
+  } catch (e) {
+    alertInApp("Ошибка соединения");
   }
-
-  renderLobby(mode, data.game_id);
 }
-
-/* ====== LOBBY ====== */
 
 function renderLobby(mode, id) {
   const root = document.getElementById("screen-content");
+  if (!root) return;
 
   root.innerHTML = `
     <section class="block">
@@ -169,47 +179,96 @@ function renderLobby(mode, id) {
     </section>
 
     <section class="block">
-      <button class="btn-secondary btn" onclick="setTab('games')">Назад</button>
+      <button class="btn btn-secondary" onclick="setTab('games')">Назад</button>
     </section>
   `;
 }
 
-/* ====== BALANCE ====== */
+/* ====== BALANCE SCREEN ====== */
 
 function renderBalance() {
   const root = document.getElementById("screen-content");
+  if (!root) return;
+
+  const stars = currentUser?.stars_balance ?? 0;
 
   root.innerHTML = `
     <section class="block">
       <div class="block-title">Ваш баланс</div>
-      <div class="balance-value">${currentUser.stars_balance} ⭐</div>
+      <div class="balance-value">${stars} ⭐</div>
     </section>
 
     <section class="block">
       <button class="btn" onclick="alertInApp('Пополнение позже')">Пополнить</button>
-      <button class="btn-secondary btn" onclick="alertInApp('Вывод позже')">Вывести</button>
+      <button class="btn btn-secondary" onclick="alertInApp('Вывод позже')">Вывести</button>
     </section>
   `;
 }
 
-/* ====== PROFILE ====== */
+/* ====== PROFILE + REFERRALS ====== */
 
 function renderProfile() {
   const root = document.getElementById("screen-content");
+  if (!root || !currentUser) return;
+
+  const botUsername = tg?.initDataUnsafe?.bot?.username || "allpvpgames_bot";
+  const refLink = `https://t.me/${botUsername}?start=ref_${currentUser.telegram_id}`;
+
+  const refCount = currentUser.ref_count || 0;
+  const refStars = currentUser.ref_earned_stars || 0;
+  const refPercent = currentUser.ref_earned_percent || 0;
 
   root.innerHTML = `
     <section class="block">
-      <div class="block-title">Профиль</div>
+      <div class="block-title">
+        Профиль
+        <span class="settings-icon-profile" onclick="toggleProfileSettings()">⚙️</span>
+      </div>
       <div class="profile-row"><span>Username</span><span>@${currentUser.username}</span></div>
-      <div class="profile-row"><span>ID</span><span>${currentUser.telegram_id}</span></div>
+    </section>
+
+    <section class="settings-panel-profile" id="settings-panel-profile">
+      <button class="settings-btn" onclick="alertInApp('Смена языка позже')">Сменить язык</button>
+      <button class="settings-btn" onclick="alertInApp('Стример‑режим позже')">Стример‑режим</button>
+      <button class="settings-btn" onclick="openAdminPanel()">Админ‑панель</button>
+    </section>
+
+    <section class="block">
+      <div class="block-title">Реферальная система</div>
+
+      <div class="ref-block">
+        <div class="ref-link">${refLink}</div>
+        <button class="copy-btn" onclick="copyRef('${refLink}')">Скопировать ссылку</button>
+      </div>
+
+      <div class="profile-row"><span>Приглашено</span><span>${refCount}</span></div>
+      <div class="profile-row"><span>Заработано звёзд</span><span>${refStars} ⭐</span></div>
+      <div class="profile-row"><span>Заработано %</span><span>${refPercent} ⭐</span></div>
+
+      <div class="text-muted" style="margin-top:8px;">
+        +10 ⭐ за каждого реферала<br>
+        +5% от всех игр реферала
+      </div>
     </section>
   `;
+}
+
+function toggleProfileSettings() {
+  const p = document.getElementById("settings-panel-profile");
+  if (!p) return;
+  p.style.display = p.style.display === "block" ? "none" : "block";
+}
+
+function copyRef(text) {
+  navigator.clipboard.writeText(text);
+  alertInApp("Ссылка скопирована");
 }
 
 /* ====== ADMIN PANEL ====== */
 
 function openAdminPanel() {
   const root = document.getElementById("screen-content");
+  if (!root) return;
 
   root.innerHTML = `
     <section class="block">
@@ -220,43 +279,56 @@ function openAdminPanel() {
   `;
 }
 
-/* ====== TOURNAMENT ====== */
+/* ====== TOURNAMENT SCREEN ====== */
 
 async function renderTournament() {
   const root = document.getElementById("screen-content");
+  if (!root) return;
 
-  const res = await fetch(API + "/tournament/active");
-  const data = await res.json();
+  try {
+    const res = await fetch(API + "/tournament/active");
+    const data = await res.json();
 
-  if (!data.ok || !data.tournament) {
-    alertInApp("Турнира нет");
-    return;
+    if (!data.ok || !data.tournament) {
+      alertInApp("Турнира нет");
+      return;
+    }
+
+    const t = data.tournament;
+
+    root.innerHTML = `
+      <section class="block">
+        <div class="block-title">${t.name}</div>
+        <div class="text-muted">ID: ${t.id}</div>
+      </section>
+
+      <section class="block">
+        <div class="block-title">Призы</div>
+        ${(t.prizes || [])
+          .map(
+            (p, i) =>
+              `<div class="profile-row"><span>${i + 1} место</span><span>${p}</span></div>`
+          )
+          .join("")}
+      </section>
+
+      <section class="block">
+        <button class="btn btn-secondary" onclick="setTab('games')">Назад</button>
+      </section>
+    `;
+  } catch (e) {
+    alertInApp("Ошибка турнира");
   }
-
-  const t = data.tournament;
-
-  root.innerHTML = `
-    <section class="block">
-      <div class="block-title">${t.name}</div>
-      <div class="text-muted">ID: ${t.id}</div>
-    </section>
-
-    <section class="block">
-      <div class="block-title">Призы</div>
-      ${t.prizes.map((p,i)=>`<div class="profile-row"><span>${i+1} место</span><span>${p}</span></div>`).join("")}
-    </section>
-
-    <section class="block">
-      <button class="btn-secondary btn" onclick="setTab('games')">Назад</button>
-    </section>
-  `;
 }
 
 /* ====== TABS ====== */
 
 function setTab(tab) {
-  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("nav-btn-active"));
-  document.querySelector(`.nav-btn[data-tab="${tab}"]`).classList.add("nav-btn-active");
+  document
+    .querySelectorAll(".nav-btn")
+    .forEach(b => b.classList.remove("nav-btn-active"));
+  const btn = document.querySelector(`.nav-btn[data-tab="${tab}"]`);
+  if (btn) btn.classList.add("nav-btn-active");
 
   if (tab === "games") renderGames();
   if (tab === "balance") renderBalance();
