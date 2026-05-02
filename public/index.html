@@ -1,87 +1,513 @@
 <!DOCTYPE html>
 <html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <title>AllPvPGamesHub</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div id="app">
-    <header class="header">
-      <div class="header-left">
-        <div class="header-title">AllPvPGamesHub</div>
-        <div id="header-balance" class="header-balance">0 ⭐</div>
-      </div>
-      <div class="header-right">
-        <div id="header-avatar" class="header-avatar"></div>
-      </div>
-    </header>
+  <head>
+    <meta charset="UTF-8" />
+    <title>AllPvPGamesHub</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #050816;
+        color: #f5f5f5;
+      }
+      .app {
+        max-width: 480px;
+        margin: 0 auto;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: linear-gradient(90deg, #111827, #020617);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+      }
+      .logo {
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background-size: cover;
+        background-position: center;
+        background-color: #1f2937;
+      }
+      .stars {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 14px;
+      }
+      .stars span {
+        color: #facc15;
+      }
+      main {
+        flex: 1;
+        padding: 12px 12px 72px;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .tab {
+        flex: 1;
+        text-align: center;
+        padding: 8px 0;
+        border-radius: 999px;
+        font-size: 13px;
+        background: #020617;
+        color: #9ca3af;
+        border: 1px solid #1f2937;
+        cursor: pointer;
+      }
+      .tab.active {
+        background: linear-gradient(90deg, #4f46e5, #06b6d4);
+        color: #f9fafb;
+        border-color: transparent;
+      }
+      .section {
+        display: none;
+      }
+      .section.active {
+        display: block;
+      }
+      .mode-card {
+        background: #020617;
+        border-radius: 12px;
+        padding: 10px;
+        margin-bottom: 10px;
+        border: 1px solid #1f2937;
+        position: relative;
+      }
+      .mode-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .mode-title {
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .mode-desc {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-bottom: 8px;
+      }
+      .mode-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .bets {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .bet-btn {
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid #1f2937;
+        background: #020617;
+        color: #e5e7eb;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .bet-btn.active {
+        background: #4f46e5;
+        border-color: #4f46e5;
+      }
+      .bet-input {
+        width: 70px;
+        padding: 4px 6px;
+        border-radius: 999px;
+        border: 1px solid #1f2937;
+        background: #020617;
+        color: #e5e7eb;
+        font-size: 11px;
+      }
+      .btn-primary {
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(90deg, #4f46e5, #06b6d4);
+        color: #f9fafb;
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .history-icon {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        cursor: pointer;
+        border: 1px solid #1f2937;
+      }
+      .history-popup {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.9);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+      }
+      .history-popup.active {
+        display: flex;
+      }
+      .history-content {
+        width: 90%;
+        max-height: 80%;
+        background: #020617;
+        border-radius: 16px;
+        padding: 12px;
+        border: 1px solid #1f2937;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .history-list {
+        flex: 1;
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+      .history-item {
+        padding: 6px 4px;
+        border-bottom: 1px solid #111827;
+        font-size: 12px;
+      }
+      .history-sort {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 6px;
+      }
+      .sort-btn {
+        flex: 1;
+        padding: 4px 0;
+        border-radius: 999px;
+        border: 1px solid #1f2937;
+        background: #020617;
+        color: #9ca3af;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .sort-btn.active {
+        background: #4f46e5;
+        color: #f9fafb;
+        border-color: #4f46e5;
+      }
+      .bottom-nav {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        max-width: 480px;
+        margin: 0 auto;
+        padding: 6px 10px 10px;
+        background: #020617;
+        border-top: 1px solid #1f2937;
+        display: flex;
+        gap: 6px;
+      }
+      .nav-btn {
+        flex: 1;
+        text-align: center;
+        padding: 6px 0;
+        border-radius: 999px;
+        font-size: 12px;
+        background: #020617;
+        color: #9ca3af;
+        border: 1px solid #1f2937;
+        cursor: pointer;
+      }
+      .nav-btn.active {
+        background: linear-gradient(90deg, #4f46e5, #06b6d4);
+        color: #f9fafb;
+        border-color: transparent;
+      }
+      .profile-block {
+        background: #020617;
+        border-radius: 12px;
+        padding: 10px;
+        border: 1px solid #1f2937;
+      }
+      .profile-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .profile-name {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .profile-username {
+        font-size: 12px;
+        color: #9ca3af;
+      }
+      .admin-block {
+        margin-top: 10px;
+        background: #020617;
+        border-radius: 12px;
+        padding: 10px;
+        border: 1px solid #1f2937;
+      }
+      .field {
+        margin-bottom: 6px;
+      }
+      .field label {
+        display: block;
+        font-size: 11px;
+        color: #9ca3af;
+        margin-bottom: 2px;
+      }
+      .field input {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid #1f2937;
+        background: #020617;
+        color: #e5e7eb;
+        font-size: 12px;
+      }
+      .games-list {
+        margin-top: 8px;
+      }
+      .game-item {
+        padding: 6px 4px;
+        border-bottom: 1px solid #111827;
+        font-size: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+      }
+      .game-main {
+        flex: 1;
+      }
+      .game-meta {
+        font-size: 11px;
+        color: #9ca3af;
+      }
+      .btn-sm {
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid #1f2937;
+        background: #020617;
+        color: #e5e7eb;
+        font-size: 11px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .replay-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.95);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 60;
+      }
+      .replay-overlay.active {
+        display: flex;
+      }
+      .replay-canvas {
+        width: 90%;
+        max-width: 360px;
+        height: 260px;
+        background: #020617;
+        border-radius: 16px;
+        border: 1px solid #1f2937;
+        position: relative;
+        overflow: hidden;
+      }
+      .replay-player {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: #4f46e5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+      }
+      .replay-header {
+        position: absolute;
+        top: 6px;
+        left: 8px;
+        right: 8px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #9ca3af;
+      }
+      .alert {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #ef4444;
+        color: #f9fafb;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        z-index: 100;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="logo">AllPvPGamesHub</div>
+        <div class="user-info">
+          <div id="userAvatar" class="avatar"></div>
+          <div class="stars">
+            <span>★</span>
+            <span id="userStars">0</span>
+          </div>
+        </div>
+      </header>
 
-    <main id="screen-content" class="screen"></main>
+      <main>
+        <div class="tabs">
+          <button class="tab active" data-tab="games">Игры</button>
+          <button class="tab" data-tab="history">История</button>
+          <button class="tab" data-tab="profile">Профиль</button>
+        </div>
 
-    <nav class="nav">
-      <button class="nav-btn nav-btn-active" data-tab="games" onclick="setTab('games')">Игры</button>
-      <button class="nav-btn" data-tab="balance" onclick="setTab('balance')">Баланс</button>
-      <button class="nav-btn" data-tab="profile" onclick="setTab('profile')">Профиль</button>
-    </nav>
-  </div>
+        <section id="section-games" class="section active">
+          <div id="modesContainer"></div>
+        </section>
 
-  <!-- SETTINGS SHEET -->
-  <div id="settings-overlay" class="bottom-sheet-overlay hidden">
-    <div id="settings-sheet" class="bottom-sheet">
-      <div class="sheet-header">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Настройки</div>
-      </div>
-      <div class="sheet-content">
-        <div class="text-muted">Тут можно будет включать/выключать звуки, вибрацию и т.п.</div>
+        <section id="section-history" class="section">
+          <div class="history-sort">
+            <button class="sort-btn active" data-sort="latest">
+              Последние
+            </button>
+            <button class="sort-btn" data-sort="biggest">Крупнейшие</button>
+            <button class="sort-btn" data-sort="lucky">Везучие</button>
+          </div>
+          <div id="globalHistory" class="history-list"></div>
+        </section>
+
+        <section id="section-profile" class="section">
+          <div class="profile-block">
+            <div class="profile-row">
+              <div id="profileAvatar" class="avatar"></div>
+              <div>
+                <div id="profileName" class="profile-name">Игрок</div>
+                <div id="profileUsername" class="profile-username">
+                  @username
+                </div>
+              </div>
+            </div>
+            <div style="margin-top: 8px; font-size: 12px; color: #9ca3af">
+              Баланс: <span id="profileStars">0</span> ★
+            </div>
+          </div>
+
+          <div class="admin-block">
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px">
+              Админ-панель (по username)
+            </div>
+            <div class="field">
+              <label>Секрет (временно: dev_secret)</label>
+              <input id="adminSecret" type="password" value="dev_secret" />
+            </div>
+            <div class="field">
+              <label>Username игрока (без @)</label>
+              <input id="adminUsername" type="text" placeholder="playername" />
+            </div>
+            <div class="field">
+              <label>Сколько звёзд выдать (+/-)</label>
+              <input id="adminAmount" type="number" value="100" />
+            </div>
+            <button id="adminGiveBtn" class="btn-primary" style="width: 100%">
+              Выдать звёзды
+            </button>
+          </div>
+
+          <div class="games-list" id="myGames"></div>
+        </section>
+      </main>
+
+      <div class="bottom-nav">
+        <button class="nav-btn active" data-tab="games">Игры</button>
+        <button class="nav-btn" data-tab="history">История игр</button>
+        <button class="nav-btn" data-tab="profile">Профиль</button>
       </div>
     </div>
-  </div>
 
-  <!-- BET SHEET -->
-  <div id="bet-overlay" class="bottom-sheet-overlay hidden">
-    <div id="bet-sheet" class="bottom-sheet">
-      <div class="sheet-header">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">Выбор ставки</div>
-      </div>
-      <div class="sheet-content">
-        <div class="bet-row">
-          <button class="bet-option bet-option-active" data-value="50" onclick="selectBet(50)">50 ⭐</button>
-          <button class="bet-option" data-value="100" onclick="selectBet(100)">100 ⭐</button>
-          <button class="bet-option" data-value="200" onclick="selectBet(200)">200 ⭐</button>
+    <div id="historyPopup" class="history-popup">
+      <div class="history-content">
+        <div class="history-header">
+          <div style="font-size: 13px; font-weight: 600">История режима</div>
+          <button
+            id="historyClose"
+            class="btn-sm"
+            style="border-radius: 999px"
+          >
+            Закрыть
+          </button>
         </div>
-        <div class="bet-row">
-          <input id="bet-custom" type="number" placeholder="Своя ставка" oninput="onBetCustomChange()" />
+        <div class="history-sort">
+          <button class="sort-btn active" data-sort="latest">
+            Последние
+          </button>
+          <button class="sort-btn" data-sort="biggest">Крупнейшие</button>
+          <button class="sort-btn" data-sort="lucky">Везучие</button>
         </div>
-        <button class="btn" style="margin-top:10px;" onclick="confirmBetAndJoin()">Играть</button>
+        <div id="modeHistoryList" class="history-list"></div>
       </div>
     </div>
-  </div>
 
-  <!-- HISTORY SHEET -->
-  <div id="history-overlay" class="bottom-sheet-overlay hidden">
-    <div id="history-sheet" class="bottom-sheet">
-      <div class="sheet-header">
-        <div class="sheet-handle"></div>
-        <div class="sheet-title">История игр</div>
-      </div>
-      <div class="sheet-content">
-        <div class="history-filters">
-          <button class="btn btn-xs" data-sort="latest" onclick="setHistorySort('latest')">Последние</button>
-          <button class="btn btn-xs" data-sort="biggest" onclick="setHistorySort('biggest')">Крупнейшие</button>
-          <button class="btn btn-xs" data-sort="luckiest" onclick="setHistorySort('luckiest')">Везучие</button>
+    <div id="replayOverlay" class="replay-overlay">
+      <div class="replay-canvas" id="replayCanvas">
+        <div class="replay-header">
+          <div id="replayTitle">Повтор</div>
+          <button id="replayClose" class="btn-sm">Закрыть</button>
         </div>
-        <div id="history-list-sheet" class="history-list"></div>
       </div>
     </div>
-  </div>
 
-  <script src="app.js"></script>
-</body>
+    <div id="alert" class="alert"></div>
+
+    <script src="app.js"></script>
+  </body>
 </html>
+
 
 
