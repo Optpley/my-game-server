@@ -15,14 +15,19 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
 
-// ====== In-memory storage (можно потом заменить на БД) ======
-const users = new Map(); // key: tg_id, value: { id, username, name, avatar, stars }
-const lobbies = new Map(); // key: lobbyId, value: { id, mode, bet, customBet, players, status }
-const games = new Map(); // key: gameId, value: { id, mode, bet, players, winnerId, replay, createdAt }
+// ===== In-memory storage =====
+const users = new Map(); // id -> {id, username, name, avatar, stars}
+const lobbies = new Map(); // id -> {id, mode, bet, players, status}
+const games = new Map(); // id -> {id, mode, bet, players, winnerId, replay, createdAt}
+const tournaments = new Map(); // id -> {id, name, modes, gameNumber, durationMinutes, createdAt}
+const specialGames = new Map(); // id -> {id, gameNumber, durationMinutes, createdAt}
+
 let nextLobbyId = 1;
 let nextGameId = 1;
+let nextTournamentId = 1;
+let nextSpecialId = 1;
 
-// ====== Helpers ======
+// ===== Helpers =====
 function getUserKeyFromInitData(initDataUnsafe) {
   if (!initDataUnsafe || !initDataUnsafe.user) return null;
   return String(initDataUnsafe.user.id);
@@ -46,7 +51,6 @@ function ensureUser(initDataUnsafe) {
     };
     users.set(key, u);
   } else {
-    // обновим имя/аву/юзернейм, если изменились
     u.username = initDataUnsafe.user.username || u.username;
     u.name =
       (initDataUnsafe.user.first_name || "") +
@@ -61,14 +65,14 @@ function hashString(str) {
   return crypto.createHash("sha256").update(str).digest("hex");
 }
 
-function deterministicStep(username, tick) {
-  const h = hashString(username + ":" + tick);
+function deterministicStep(username, seed) {
+  const h = hashString(username + ":" + seed);
   const num = parseInt(h.slice(0, 8), 16);
-  return (num % 7) + 1; // шаг 1..7
+  return (num % 7) + 1; // 1..7
 }
 
-// ====== WebSocket для онлайна ======
-const wsClients = new Map(); // key: userId, value: ws
+// ===== WebSocket =====
+const wsClients = new Map(); // userId -> ws
 
 wss.on("connection", (ws) => {
   let userId = null;
@@ -77,7 +81,6 @@ wss.on("connection", (ws) => {
     try {
       const data = JSON.parse(msg.toString());
       if (data.type === "auth") {
-        // data.initDataUnsafe
         const u = ensureUser(data.initDataUnsafe);
         if (!u) return;
         userId = u.id;
@@ -94,15 +97,12 @@ wss.on("connection", (ws) => {
             },
           })
         );
-        sendLobbyState(ws);
-        sendUserGames(ws, u.id);
       }
+
+      if (!userId) return;
+
       if (data.type === "join_lobby") {
-        handleJoinLobby(userId, data.mode, data.bet, data.customBet);
-      }
-      if (data.type === "get_state") {
-        sendLobbyState(ws);
-        if (userId) sendUserGames(ws, userId);
+        handleJoinLobby(userId, data.mode, data.bet);
       }
     } catch (e) {
       console.error("WS message error:", e);
@@ -110,20 +110,9 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    if (userId) {
-      wsClients.delete(userId);
-    }
+    if (userId) wsClients.delete(userId);
   });
 });
-
-function broadcast(obj) {
-  const msg = JSON.stringify(obj);
-  for (const ws of wsClients.values()) {
-    try {
-      ws.send(msg);
-    } catch (e) {}
-  }
-}
 
 function sendToUser(userId, obj) {
   const ws = wsClients.get(userId);
@@ -133,61 +122,26 @@ function sendToUser(userId, obj) {
   } catch (e) {}
 }
 
-function sendLobbyState(ws) {
-  const list = Array.from(lobbies.values()).map((l) => ({
-    id: l.id,
-    mode: l.mode,
-    bet: l.bet,
-    customBet: l.customBet,
-    players: l.players.map((p) => ({
-      id: p.id,
-      username: p.username,
-      name: p.name,
-      avatar: p.avatar,
-    })),
-    status: l.status,
-  }));
-  ws.send(
-    JSON.stringify({
-      type: "lobbies",
-      lobbies: list,
-    })
-  );
+function broadcastToLobby(lobby, obj) {
+  const msg = JSON.stringify(obj);
+  lobby.players.forEach((p) => {
+    const ws = wsClients.get(p.id);
+    if (!ws) return;
+    try {
+      ws.send(msg);
+    } catch (e) {}
+  });
 }
 
-function sendUserGames(ws, userId) {
-  const list = Array.from(games.values())
-    .filter((g) => g.players.some((p) => p.id === userId))
-    .sort((a, b) => b.id - a.id)
-    .slice(0, 50)
-    .map((g) => ({
-      id: g.id,
-      mode: g.mode,
-      bet: g.bet,
-      players: g.players.map((p) => ({
-        id: p.id,
-        username: p.username,
-        name: p.name,
-        avatar: p.avatar,
-      })),
-      winnerId: g.winnerId,
-      createdAt: g.createdAt,
-    }));
-
-  ws.send(
-    JSON.stringify({
-      type: "user_games",
-      games: list,
-    })
-  );
-}
-
-// ====== Лобби и запуск игр ======
-function handleJoinLobby(userId, mode, bet, customBet) {
+// ===== Lobby & games =====
+function handleJoinLobby(userId, mode, bet) {
   const u = users.get(String(userId));
-  if (!u) return;
-  const realBet = customBet && customBet > 0 ? customBet : bet || 1;
+  if (!u) {
+    sendToUser(userId, { type: "error", message: "Пользователь не найден" });
+    return;
+  }
 
+  const realBet = bet && bet > 0 ? bet : 1;
   if (u.stars < realBet) {
     sendToUser(userId, {
       type: "error",
@@ -196,13 +150,12 @@ function handleJoinLobby(userId, mode, bet, customBet) {
     return;
   }
 
-  // ищем существующее лобби с тем же режимом и ставкой, где ещё есть место
   let lobby = Array.from(lobbies.values()).find(
     (l) =>
       l.mode === mode &&
       l.bet === realBet &&
       l.status === "waiting" &&
-      l.players.length < 4
+      l.players.length < 2
   );
 
   if (!lobby) {
@@ -210,7 +163,6 @@ function handleJoinLobby(userId, mode, bet, customBet) {
       id: nextLobbyId++,
       mode,
       bet: realBet,
-      customBet: customBet || null,
       players: [],
       status: "waiting",
     };
@@ -232,9 +184,16 @@ function handleJoinLobby(userId, mode, bet, customBet) {
     avatar: u.avatar,
   });
 
-  broadcast({
-    type: "lobbies",
-    lobbies: Array.from(lobbies.values()),
+  // отправляем состояние лобби всем в нём
+  broadcastToLobby(lobby, {
+    type: "lobby_state",
+    lobby: {
+      id: lobby.id,
+      mode: lobby.mode,
+      bet: lobby.bet,
+      players: lobby.players,
+      status: lobby.status,
+    },
   });
 
   if (lobby.players.length >= 2) {
@@ -251,20 +210,18 @@ function startGameFromLobby(lobby) {
   const players = lobby.players.map((p) => ({ ...p }));
 
   // списываем ставку
-  for (const p of players) {
+  players.forEach((p) => {
     const u = users.get(String(p.id));
     if (u) {
       u.stars -= bet;
       if (u.stars < 0) u.stars = 0;
     }
-  }
+  });
 
-  // запускаем механику
   const replay = simulateGame(mode, players);
   const winnerId = replay.winnerId;
-
-  // начисляем выигрыш
   const pot = bet * players.length;
+
   const winnerUser = users.get(String(winnerId));
   if (winnerUser) {
     winnerUser.stars += pot;
@@ -281,65 +238,73 @@ function startGameFromLobby(lobby) {
   };
   games.set(gameId, game);
 
-  // удаляем лобби
-  lobbies.delete(lobby.id);
-
   // уведомляем игроков
-  for (const p of players) {
-    sendToUser(p.id, {
-      type: "game_result",
-      game: {
-        id: game.id,
-        mode: game.mode,
-        bet: game.bet,
-        players: game.players,
-        winnerId: game.winnerId,
-        createdAt: game.createdAt,
-      },
-    });
-  }
-
-  broadcast({
-    type: "lobbies",
-    lobbies: Array.from(lobbies.values()),
+  broadcastToLobby(lobby, {
+    type: "game_result",
+    game: {
+      id: game.id,
+      mode: game.mode,
+      bet: game.bet,
+      players: game.players,
+      winnerId: game.winnerId,
+      createdAt: game.createdAt,
+    },
   });
+
+  lobbies.delete(lobby.id);
 }
 
-// ====== Механика игр (без Math.random, детерминированно) ======
+// ===== Game mechanics =====
 function simulateGame(mode, players) {
-  // общая идея: у каждого игрока есть позиция/очки,
-  // на каждом тике шаг считается детерминированно от username+tick
   const frames = [];
   const state = players.map((p) => ({
     id: p.id,
     username: p.username || String(p.id),
     pos: 0,
+    alive: true,
   }));
 
-  const maxTicks = 60;
+  const maxTicks = 80;
   const target = 100;
-
   let winnerId = null;
 
   for (let tick = 0; tick < maxTicks; tick++) {
-    for (const s of state) {
-      const step = deterministicStep(s.username, mode + ":" + tick);
+    const alivePlayers = state.filter((s) => s.alive);
+    if (alivePlayers.length <= 1) {
+      winnerId = alivePlayers[0].id;
+      break;
+    }
+
+    alivePlayers.forEach((s) => {
+      const step = deterministicStep(
+        s.username,
+        mode + ":" + tick.toString()
+      );
       if (mode === "ice_arena") {
         s.pos += step;
       } else if (mode === "elimination") {
-        s.pos += step * 0.8;
+        s.pos += step * 0.7;
       } else if (mode === "ball_race") {
-        s.pos += step * 1.2;
+        s.pos += step * 1.3;
       } else if (mode === "color_arena") {
         s.pos += step;
       } else if (mode === "mix") {
-        const m = tick % 4;
-        if (m === 0) s.pos += step;
-        if (m === 1) s.pos += step * 0.8;
-        if (m === 2) s.pos += step * 1.2;
-        if (m === 3) s.pos += step;
+        const phase = tick % 4;
+        if (phase === 0) s.pos += step;
+        if (phase === 1) s.pos += step * 0.7;
+        if (phase === 2) s.pos += step * 1.3;
+        if (phase === 3) s.pos += step;
       } else {
         s.pos += step;
+      }
+    });
+
+    // для режима "выбывание" — каждый N тиков вылетает последний
+    if (mode === "elimination" && tick > 0 && tick % 10 === 0) {
+      const aliveNow = state.filter((s) => s.alive);
+      if (aliveNow.length > 1) {
+        aliveNow.sort((a, b) => a.pos - b.pos);
+        aliveNow[0].alive = false;
       }
     }
 
@@ -347,10 +312,11 @@ function simulateGame(mode, players) {
       state.map((s) => ({
         id: s.id,
         pos: s.pos,
+        alive: s.alive,
       }))
     );
 
-    const reached = state.filter((s) => s.pos >= target);
+    const reached = state.filter((s) => s.alive && s.pos >= target);
     if (reached.length > 0) {
       reached.sort((a, b) => b.pos - a.pos);
       winnerId = reached[0].id;
@@ -359,16 +325,26 @@ function simulateGame(mode, players) {
   }
 
   if (!winnerId) {
-    state.sort((a, b) => b.pos - a.pos);
-    winnerId = state[0].id;
+    const aliveNow = state.filter((s) => s.alive);
+    aliveNow.sort((a, b) => b.pos - a.pos);
+    winnerId = aliveNow[0].id;
   }
 
   return { winnerId, frames };
 }
 
-// ====== HTTP API ======
+// ===== History helpers =====
+function luckScore(game) {
+  const winner = game.players.find((p) => p.id === game.winnerId);
+  if (!winner) return 0;
+  const u = users.get(String(winner.id));
+  if (!u) return 0;
+  return 1000000 - u.stars;
+}
 
-// Получить баланс и профиль
+// ===== HTTP API =====
+
+// профиль
 app.post("/api/me", (req, res) => {
   const initDataUnsafe = req.body.initDataUnsafe;
   const u = ensureUser(initDataUnsafe);
@@ -386,23 +362,29 @@ app.post("/api/me", (req, res) => {
   });
 });
 
-// История игр (с сортировкой)
+// история игр
 app.get("/api/history", (req, res) => {
-  const sort = req.query.sort || "latest"; // latest | biggest | lucky
+  const mode = req.query.mode || null;
+  const filter = req.query.filter || "latest"; // latest | biggest | lucky | mine
+  const userId = req.query.userId || null;
 
   let list = Array.from(games.values());
 
-  if (sort === "biggest") {
-    list.sort((a, b) => b.bet * b.players.length - a.bet * a.players.length);
-  } else if (sort === "lucky") {
-    // "везучие" — где победитель имел меньше всех звёзд до игры
-    list.sort((a, b) => {
-      const scoreA = luckScore(a);
-      const scoreB = luckScore(b);
-      return scoreB - scoreA;
-    });
+  if (mode) list = list.filter((g) => g.mode === mode);
+  if (filter === "mine" && userId) {
+    list = list.filter((g) =>
+      g.players.some((p) => String(p.id) === String(userId))
+    );
+  }
+
+  if (filter === "biggest") {
+    list.sort(
+      (a, b) => b.bet * b.players.length - a.bet * a.players.length
+    );
+  } else if (filter === "lucky") {
+    list.sort((a, b) => luckScore(b) - luckScore(a));
   } else {
-    list.sort((a, b) => b.id - a.id);
+    list.sort((a, b) => b.createdAt - a.createdAt);
   }
 
   list = list.slice(0, 100);
@@ -420,16 +402,7 @@ app.get("/api/history", (req, res) => {
   });
 });
 
-function luckScore(game) {
-  // чем меньше звёзд было у победителя, тем "везучее"
-  const winner = game.players.find((p) => p.id === game.winnerId);
-  if (!winner) return 0;
-  const u = users.get(String(winner.id));
-  if (!u) return 0;
-  return 1000000 - u.stars;
-}
-
-// Реплей по id
+// реплей
 app.get("/api/games/replay/:id", (req, res) => {
   const id = Number(req.params.id);
   const g = games.get(id);
@@ -449,10 +422,9 @@ app.get("/api/games/replay/:id", (req, res) => {
   });
 });
 
-// Админ: выдача звёзд по username
+// админ: звёзды по username
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
-  // простой секрет, потом заменишь
   if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
     return res.json({ ok: false, error: "bad_secret" });
   }
@@ -482,8 +454,57 @@ app.post("/api/admin/give-stars", (req, res) => {
   });
 });
 
-// ====== Start ======
+// турниры
+app.post("/api/tournaments", (req, res) => {
+  const { adminSecret, name, modes, gameNumber, durationMinutes } = req.body;
+  if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
+    return res.json({ ok: false, error: "bad_secret" });
+  }
+  const t = {
+    id: nextTournamentId++,
+    name: name || "Турнир",
+    modes: Array.isArray(modes) ? modes : [],
+    gameNumber: Number(gameNumber) || 0,
+    durationMinutes: Number(durationMinutes) || 0,
+    createdAt: Date.now(),
+  };
+  tournaments.set(t.id, t);
+  res.json({ ok: true, tournament: t });
+});
+
+app.get("/api/tournaments", (req, res) => {
+  res.json({
+    ok: true,
+    tournaments: Array.from(tournaments.values()),
+  });
+});
+
+// особая игра
+app.post("/api/special-game", (req, res) => {
+  const { adminSecret, gameNumber, durationMinutes } = req.body;
+  if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
+    return res.json({ ok: false, error: "bad_secret" });
+  }
+  const s = {
+    id: nextSpecialId++,
+    gameNumber: Number(gameNumber) || 0,
+    durationMinutes: Number(durationMinutes) || 0,
+    createdAt: Date.now(),
+  };
+  specialGames.set(s.id, s);
+  res.json({ ok: true, special: s });
+});
+
+app.get("/api/special-game", (req, res) => {
+  res.json({
+    ok: true,
+    specials: Array.from(specialGames.values()),
+  });
+});
+
+// ===== Start =====
 server.listen(PORT, () => {
   console.log("Server listening on port", PORT);
 });
+
 
