@@ -2,41 +2,86 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AllPvpGamesHub</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>AllPvPGamesHub</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-
   <div id="app">
-
-    <header id="main-header">
-      <div class="title-row">
-        <div class="app-title">AllPvpGamesHub</div>
-        <div class="header-right">
-          <div class="app-balance" id="header-balance">— ⭐</div>
-        </div>
+    <header class="header">
+      <div class="header-left">
+        <div class="header-title">AllPvPGamesHub</div>
+        <div id="header-balance" class="header-balance">0 ⭐</div>
+      </div>
+      <div class="header-right">
+        <div id="header-avatar" class="header-avatar"></div>
       </div>
     </header>
 
-    <main id="screen-content"></main>
+    <main id="screen-content" class="screen"></main>
 
-    <nav class="bottom-nav">
-      <button class="nav-btn nav-btn-active" data-tab="games" onclick="setTab('games')">
-        🎮<span>Игры</span>
-      </button>
-      <button class="nav-btn" data-tab="balance" onclick="setTab('balance')">
-        💰<span>Баланс</span>
-      </button>
-      <button class="nav-btn" data-tab="profile" onclick="setTab('profile')">
-        👤<span>Профиль</span>
-      </button>
+    <nav class="nav">
+      <button class="nav-btn nav-btn-active" data-tab="games" onclick="setTab('games')">Игры</button>
+      <button class="nav-btn" data-tab="balance" onclick="setTab('balance')">Баланс</button>
+      <button class="nav-btn" data-tab="profile" onclick="setTab('profile')">Профиль</button>
     </nav>
-
   </div>
 
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- SETTINGS SHEET -->
+  <div id="settings-overlay" class="bottom-sheet-overlay hidden">
+    <div id="settings-sheet" class="bottom-sheet">
+      <div class="sheet-header">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Настройки</div>
+      </div>
+      <div class="sheet-content">
+        <div class="text-muted">Тут можно будет включать/выключать звуки, вибрацию и т.п.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BET SHEET -->
+  <div id="bet-overlay" class="bottom-sheet-overlay hidden">
+    <div id="bet-sheet" class="bottom-sheet">
+      <div class="sheet-header">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">Выбор ставки</div>
+      </div>
+      <div class="sheet-content">
+        <div class="bet-row">
+          <button class="bet-option bet-option-active" data-value="50" onclick="selectBet(50)">50 ⭐</button>
+          <button class="bet-option" data-value="100" onclick="selectBet(100)">100 ⭐</button>
+          <button class="bet-option" data-value="200" onclick="selectBet(200)">200 ⭐</button>
+        </div>
+        <div class="bet-row">
+          <input id="bet-custom" type="number" placeholder="Своя ставка" oninput="onBetCustomChange()" />
+        </div>
+        <button class="btn" style="margin-top:10px;" onclick="confirmBetAndJoin()">Играть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY SHEET -->
+  <div id="history-overlay" class="bottom-sheet-overlay hidden">
+    <div id="history-sheet" class="bottom-sheet">
+      <div class="sheet-header">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">История игр</div>
+      </div>
+      <div class="sheet-content">
+        <div class="history-filters">
+          <button class="btn btn-xs" data-sort="latest" onclick="setHistorySort('latest')">Последние</button>
+          <button class="btn btn-xs" data-sort="biggest" onclick="setHistorySort('biggest')">Крупнейшие</button>
+          <button class="btn btn-xs" data-sort="luckiest" onclick="setHistorySort('luckiest')">Везучие</button>
+        </div>
+        <div id="history-list-sheet" class="history-list"></div>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
+
 
