@@ -549,11 +549,27 @@ app.get("/api/tournament/active", (req, res) => {
   );
 });
 
+// история с сортировкой
 app.get("/api/games/history", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || "20", 10), 50);
+  const sort = req.query.sort || "latest"; // latest | biggest | luckiest
+
+  let orderBy = "id DESC";
+
+  if (sort === "biggest") {
+    orderBy = "bank DESC, id DESC";
+  } else if (sort === "luckiest") {
+    orderBy = "CAST(bank AS REAL) / id DESC";
+  }
 
   db.all(
-    "SELECT id, mode, bank, status, created_at, winner_telegram_id, winner_username FROM games WHERE status = 'finished' ORDER BY id DESC LIMIT ?",
+    `
+      SELECT id, mode, bank, status, created_at, winner_telegram_id, winner_username
+      FROM games
+      WHERE status = 'finished'
+      ORDER BY ${orderBy}
+      LIMIT ?
+    `,
     [limit],
     (err, rows) => {
       if (err) return res.json({ ok: false, error: "DB_ERROR" });
@@ -726,7 +742,6 @@ app.post("/api/ref/collect", async (req, res) => {
 });
 
 // === ADMIN API ===
-// теперь по username
 
 app.post("/api/admin/send-stars", async (req, res) => {
   const { admin_telegram_id, target_username, amount } = req.body;
