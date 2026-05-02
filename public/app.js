@@ -1,3 +1,4 @@
+// public/app.js
 const API = window.location.origin + "/api";
 let tg = window.Telegram?.WebApp;
 tg?.expand?.();
@@ -5,6 +6,9 @@ tg?.expand?.();
 let currentUser = null;
 let currentSettings = null;
 let mixTimerInterval = null;
+
+let ws = null;
+let currentLobbyGameId = null;
 
 /* ====== IN-APP ALERT ====== */
 
@@ -31,18 +35,20 @@ function getNextMoscowMidnight() {
   return next;
 }
 
-function formatDiffToMidnight() {
+function formatDiffToMidnightFull() {
   const now = getMoscowNow();
   const next = getNextMoscowMidnight();
   const diffMs = next - now;
-  if (diffMs <= 0) return "00:00";
+  if (diffMs <= 0) return "00:00:00";
 
   const totalSec = Math.floor(diffMs / 1000);
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
   const hh = String(h).padStart(2, "0");
   const mm = String(m).padStart(2, "0");
-  return `${hh}:${mm}`;
+  const ss = String(s).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 }
 
 function getTodayMixMode() {
@@ -103,6 +109,8 @@ async function renderGames() {
     mixTimerInterval = null;
   }
 
+  closeLobbyWS();
+
   let tournamentHTML = "";
 
   try {
@@ -132,9 +140,9 @@ async function renderGames() {
   const mixModeText =
     mixModeToday === "meteor_fall"
       ? "Уклоняйся от метеоритов!"
-      : "Красочные войны!";
+      : "Красочная арена!";
 
-  const mixTimerText = formatDiffToMidnight();
+  const mixTimerText = formatDiffToMidnightFull();
 
   root.innerHTML = `
     ${tournamentHTML}
@@ -142,7 +150,7 @@ async function renderGames() {
     <article class="game-card" onclick="joinGame('ice_arena')">
       <div class="game-info">
         <div class="game-title">Ice Arena</div>
-        <div class="game-desc">Классическое "тот, на ком остановится шайба — заберёт весь банк!"</div>
+        <div class="game-desc">Классическая арена: кто выживет — заберёт банк.</div>
       </div>
       <div class="game-image game-ice">картинка</div>
     </article>
@@ -150,15 +158,15 @@ async function renderGames() {
     <article class="game-card" onclick="joinGame('knockout')">
       <div class="game-info">
         <div class="game-title">Выбывание</div>
-        <div class="game-desc">Стенка убирается, кто останется последним...?</div>
+        <div class="game-desc">Стенки исчезают, остаётся один.</div>
       </div>
       <div class="game-image game-knockout">картинка</div>
     </article>
 
     <article class="game-card" onclick="joinGame('wheel')">
       <div class="game-info">
-        <div class="game-title">Колесо</div>
-        <div class="game-desc">Выиграет ли шанс?</div>
+        <div class="game-title">Кольцо</div>
+        <div class="game-desc">Рулетка шанса.</div>
       </div>
       <div class="game-image game-wheel">картинка</div>
     </article>
@@ -166,7 +174,7 @@ async function renderGames() {
     <article class="game-card" onclick="joinGame('race_balls')">
       <div class="game-info">
         <div class="game-title">Гонка шаров</div>
-        <div class="game-desc">Приедешь первым?</div>
+        <div class="game-desc">Чей шар приедет первым?</div>
       </div>
       <div class="game-image game-race">картинка</div>
     </article>
@@ -174,7 +182,7 @@ async function renderGames() {
     <article class="game-card" onclick="joinGame('color_arena')">
       <div class="game-info">
         <div class="game-title">Красочная арена</div>
-        <div class="game-desc">Закрась больше других</div>
+        <div class="game-desc">Закрась больше всех.</div>
       </div>
       <div class="game-image game-color">картинка</div>
     </article>
@@ -192,12 +200,13 @@ async function renderGames() {
   const mixTimerEl = document.getElementById("mix-timer");
   if (mixTimerEl) {
     mixTimerInterval = setInterval(() => {
-      mixTimerEl.innerText = "Смена режима через " + formatDiffToMidnight();
-    }, 60000);
+      mixTimerEl.innerText =
+        "Смена режима через " + formatDiffToMidnightFull();
+    }, 1000);
   }
 }
 
-/* ====== JOIN GAME → LOBBY ====== */
+/* ====== JOIN GAME → LOBBY (WS) ====== */
 
 async function joinGame(mode) {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
@@ -223,7 +232,8 @@ async function joinGame(mode) {
       balEl.innerText = currentUser.stars_balance + " ⭐";
     }
 
-    renderLobby(mode, data.game_id);
+    renderLobby(data.mode, data.game_id);
+    openLobbyWS(data.game_id);
   } catch (e) {
     alertInApp("Ошибка соединения");
   }
@@ -243,13 +253,119 @@ function renderLobby(mode, id) {
       <div class="block-title">Лобби</div>
       <div class="text-muted">Режим: ${mode}</div>
       <div class="text-muted">ID: ${id}</div>
-      <div style="margin-top:10px;">Ожидание игроков...</div>
+      <div style="margin-top:10px;">Онлайн игроки:</div>
+      <div id="lobby-players" class="text-muted" style="margin-top:4px;">подключение...</div>
     </section>
 
     <section class="block">
-      <button class="btn btn-secondary" onclick="setTab('games')">Назад</button>
+      <div class="block-title">Статус игры</div>
+      <div id="lobby-status" class="text-muted">Ожидание игроков...</div>
+    </section>
+
+    <section class="block">
+      <button class="btn btn-secondary" onclick="leaveLobbyAndBack()">Назад</button>
     </section>
   `;
+}
+
+function leaveLobbyAndBack() {
+  closeLobbyWS();
+  setTab("games");
+}
+
+/* ====== WebSocket для лобби и игры ====== */
+
+function openLobbyWS(gameId) {
+  closeLobbyWS();
+  currentLobbyGameId = gameId;
+
+  const wsUrl =
+    (window.location.protocol === "https:" ? "wss://" : "ws://") +
+    window.location.host;
+
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
+    const username = tg?.initDataUnsafe?.user?.username || "guest";
+
+    ws.send(
+      JSON.stringify({
+        type: "join_lobby",
+        game_id: gameId,
+        telegram_id,
+        username
+      })
+    );
+  };
+
+  ws.onmessage = (event) => {
+    let data;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    if (data.type === "lobby_state" && data.game_id === currentLobbyGameId) {
+      const el = document.getElementById("lobby-players");
+      if (!el) return;
+
+      if (!data.players || data.players.length === 0) {
+        el.innerText = "Пока никого нет...";
+        return;
+      }
+
+      el.innerHTML = data.players
+        .map(
+          (p) =>
+            `<div>@${p.username || "player"} (${p.telegram_id})</div>`
+        )
+        .join("");
+    }
+
+    if (data.type === "game_start" && data.game_id === currentLobbyGameId) {
+      const st = document.getElementById("lobby-status");
+      if (st) {
+        st.innerText = "Игра началась! Идёт раунд...";
+      }
+    }
+
+    if (data.type === "game_result" && data.game_id === currentLobbyGameId) {
+      const st = document.getElementById("lobby-status");
+      if (!st) return;
+
+      const meId = tg?.initDataUnsafe?.user?.id || 0;
+      const isMeWinner = data.winner_telegram_id === meId;
+
+      st.innerHTML = `
+        Победитель: @${data.winner_username || "player"}<br>
+        Банк: ${data.bank} ⭐<br>
+        ${isMeWinner ? "Ты забрал банк! 🔥" : "В этот раз не повезло."}
+      `;
+
+      // обновить баланс после победы
+      loadUser();
+    }
+  };
+
+  ws.onclose = () => {
+    ws = null;
+  };
+
+  ws.onerror = () => {
+    alertInApp("Ошибка WebSocket");
+  };
+}
+
+function closeLobbyWS() {
+  currentLobbyGameId = null;
+  if (ws) {
+    try {
+      ws.close();
+    } catch {}
+    ws = null;
+  }
 }
 
 /* ====== BALANCE SCREEN ====== */
@@ -262,6 +378,7 @@ function renderBalance() {
     clearInterval(mixTimerInterval);
     mixTimerInterval = null;
   }
+  closeLobbyWS();
 
   const stars = currentUser?.stars_balance ?? 0;
 
@@ -288,6 +405,7 @@ function renderProfile() {
     clearInterval(mixTimerInterval);
     mixTimerInterval = null;
   }
+  closeLobbyWS();
 
   const botUsername = tg?.initDataUnsafe?.bot?.username || "allpvpgames_bot";
   const refLink = `https://t.me/${botUsername}?start=ref_${currentUser.telegram_id}`;
@@ -299,19 +417,17 @@ function renderProfile() {
     (currentUser.ref_pending_stars || 0) +
     (currentUser.ref_pending_percent || 0);
 
+  const adminBadge = currentUser.is_admin ? " ⭐" : "";
+
   root.innerHTML = `
     <section class="block">
       <div class="block-title">
-        Профиль
-        <span class="settings-icon-profile" onclick="toggleProfileSettings()">⚙️</span>
+        Профиль${adminBadge}
+        <span class="settings-icon-profile" onclick="openSettingsSheet()">⚙️</span>
+        ${currentUser.is_admin ? `<span class="settings-icon-profile" style="margin-left:8px;" onclick="openAdminPanel()">😎</span>` : ""}
       </div>
       <div class="profile-row"><span>Username</span><span>@${currentUser.username}</span></div>
-    </section>
-
-    <section class="settings-panel-profile" id="settings-panel-profile">
-      <button class="settings-btn" onclick="alertInApp('Смена языка позже')">Сменить язык</button>
-      <button class="settings-btn" onclick="alertInApp('Стример‑режим позже')">Стример‑режим</button>
-      <button class="settings-btn" onclick="openAdminPanel()">Админ‑панель</button>
+      <div class="profile-row"><span>Telegram ID</span><span>${currentUser.telegram_id}</span></div>
     </section>
 
     <section class="block">
@@ -335,12 +451,6 @@ function renderProfile() {
       </div>
     </section>
   `;
-}
-
-function toggleProfileSettings() {
-  const p = document.getElementById("settings-panel-profile");
-  if (!p) return;
-  p.style.display = p.style.display === "block" ? "none" : "block";
 }
 
 function copyRef(text) {
@@ -381,19 +491,227 @@ async function collectRef() {
   }
 }
 
+/* ====== SETTINGS BOTTOM SHEET ====== */
+
+let sheetStartY = null;
+let sheetCurrentY = 0;
+
+function openSettingsSheet() {
+  const overlay = document.getElementById("settings-overlay");
+  const sheet = document.getElementById("settings-sheet");
+  if (!overlay || !sheet) return;
+
+  overlay.classList.remove("hidden");
+  sheet.style.transform = "translateY(0)";
+
+  overlay.addEventListener(
+    "click",
+    (e) => {
+      if (e.target === overlay) {
+        closeSettingsSheet();
+      }
+    },
+    { once: true }
+  );
+
+  sheet.addEventListener("touchstart", onSheetTouchStart, { passive: true });
+  sheet.addEventListener("touchmove", onSheetTouchMove, { passive: true });
+  sheet.addEventListener("touchend", onSheetTouchEnd, { passive: true });
+}
+
+function closeSettingsSheet() {
+  const overlay = document.getElementById("settings-overlay");
+  const sheet = document.getElementById("settings-sheet");
+  if (!overlay || !sheet) return;
+
+  sheet.style.transform = "translateY(100%)";
+  setTimeout(() => {
+    overlay.classList.add("hidden");
+    sheet.style.transform = "translateY(0)";
+  }, 180);
+}
+
+function onSheetTouchStart(e) {
+  sheetStartY = e.touches[0].clientY;
+  sheetCurrentY = 0;
+}
+
+function onSheetTouchMove(e) {
+  if (sheetStartY === null) return;
+  const y = e.touches[0].clientY;
+  const diff = y - sheetStartY;
+  if (diff > 0) {
+    sheetCurrentY = diff;
+    const sheet = document.getElementById("settings-sheet");
+    if (sheet) {
+      sheet.style.transform = `translateY(${diff}px)`;
+    }
+  }
+}
+
+function onSheetTouchEnd() {
+  const threshold = 80;
+  if (sheetCurrentY > threshold) {
+    closeSettingsSheet();
+  } else {
+    const sheet = document.getElementById("settings-sheet");
+    if (sheet) {
+      sheet.style.transform = "translateY(0)";
+    }
+  }
+  sheetStartY = null;
+  sheetCurrentY = 0;
+}
+
 /* ====== ADMIN PANEL ====== */
 
 function openAdminPanel() {
+  if (!currentUser?.is_admin) {
+    alertInApp("Ты не админ");
+    return;
+  }
+
   const root = document.getElementById("screen-content");
   if (!root) return;
+
+  if (mixTimerInterval) {
+    clearInterval(mixTimerInterval);
+    mixTimerInterval = null;
+  }
+  closeLobbyWS();
 
   root.innerHTML = `
     <section class="block">
       <div class="block-title">Админ‑панель</div>
-      <button class="btn" onclick="alertInApp('Создание турнира позже')">Создать турнир</button>
-      <button class="btn" onclick="alertInApp('Управление играми позже')">Управление играми</button>
+      <div class="text-muted">Telegram ID: ${currentUser.telegram_id}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-title">Отправить звёзды пользователю</div>
+      <div class="profile-row">
+        <span>ID пользователя</span>
+        <input id="admin-target-id" type="number" style="width:120px;border-radius:8px;border:none;padding:4px 6px;">
+      </div>
+      <div class="profile-row">
+        <span>Сколько звёзд</span>
+        <input id="admin-stars-amount" type="number" style="width:120px;border-radius:8px;border:none;padding:4px 6px;">
+      </div>
+      <button class="btn" onclick="adminSendStars()">Отправить</button>
+    </section>
+
+    <section class="block">
+      <div class="block-title">Создать турнир</div>
+      <div class="profile-row">
+        <span>Название</span>
+        <input id="admin-t-name" type="text" style="width:140px;border-radius:8px;border:none;padding:4px 6px;">
+      </div>
+      <div class="profile-row">
+        <span>Режимы (через запятую)</span>
+        <input id="admin-t-modes" type="text" style="width:140px;border-radius:8px;border:none;padding:4px 6px;" placeholder="ice_arena,knockout">
+      </div>
+      <div class="profile-row">
+        <span>Призы (через запятую)</span>
+        <input id="admin-t-prizes" type="text" style="width:140px;border-radius:8px;border:none;padding:4px 6px;" placeholder="100⭐,50⭐,25⭐">
+      </div>
+      <button class="btn" onclick="adminCreateTournament()">Создать турнир</button>
+    </section>
+
+    <section class="block">
+      <div class="block-title">Создать особенную игру</div>
+      <div class="profile-row">
+        <span>Режим</span>
+        <input id="admin-s-mode" type="text" style="width:140px;border-radius:8px;border:none;padding:4px 6px;" placeholder="special_mode">
+      </div>
+      <div class="profile-row">
+        <span>Описание</span>
+        <input id="admin-s-desc" type="text" style="width:140px;border-radius:8px;border:none;padding:4px 6px;">
+      </div>
+      <button class="btn" onclick="adminCreateSpecial()">Создать особую игру</button>
+    </section>
+
+    <section class="block">
+      <button class="btn btn-secondary" onclick="setTab('profile')">Назад в профиль</button>
     </section>
   `;
+}
+
+async function adminSendStars() {
+  const admin_telegram_id = tg?.initDataUnsafe?.user?.id || 0;
+  const target_telegram_id = Number(
+    document.getElementById("admin-target-id").value || 0
+  );
+  const amount = Number(
+    document.getElementById("admin-stars-amount").value || 0
+  );
+
+  if (!target_telegram_id || !amount) {
+    alertInApp("Заполни ID и сумму");
+    return;
+  }
+
+  const res = await fetch(API + "/admin/send-stars", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ admin_telegram_id, target_telegram_id, amount })
+  });
+
+  const data = await res.json();
+  if (!data.ok) {
+    alertInApp("Ошибка: " + (data.error || "UNKNOWN"));
+    return;
+  }
+
+  alertInApp("Звёзды отправлены");
+}
+
+async function adminCreateTournament() {
+  const admin_telegram_id = tg?.initDataUnsafe?.user?.id || 0;
+  const name = document.getElementById("admin-t-name").value || "Турнир";
+  const modesStr = document.getElementById("admin-t-modes").value || "";
+  const prizesStr = document.getElementById("admin-t-prizes").value || "";
+
+  const modes = modesStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const prizes = prizesStr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const res = await fetch(API + "/admin/create-tournament", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ admin_telegram_id, name, modes, prizes })
+  });
+
+  const data = await res.json();
+  if (!data.ok) {
+    alertInApp("Ошибка: " + (data.error || "UNKNOWN"));
+    return;
+  }
+
+  alertInApp("Турнир создан (ID " + data.id + ")");
+}
+
+async function adminCreateSpecial() {
+  const admin_telegram_id = tg?.initDataUnsafe?.user?.id || 0;
+  const mode = document.getElementById("admin-s-mode").value || "special";
+  const description = document.getElementById("admin-s-desc").value || "";
+
+  const res = await fetch(API + "/admin/create-special", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ admin_telegram_id, mode, description })
+  });
+
+  const data = await res.json();
+  if (!data.ok) {
+    alertInApp("Ошибка: " + (data.error || "UNKNOWN"));
+    return;
+  }
+
+  alertInApp("Особая игра создана (ID " + data.id + ")");
 }
 
 /* ====== TOURNAMENT SCREEN ====== */
@@ -406,6 +724,7 @@ async function renderTournament() {
     clearInterval(mixTimerInterval);
     mixTimerInterval = null;
   }
+  closeLobbyWS();
 
   try {
     const res = await fetch(API + "/tournament/active");
@@ -448,7 +767,7 @@ async function renderTournament() {
 function setTab(tab) {
   document
     .querySelectorAll(".nav-btn")
-    .forEach(b => b.classList.remove("nav-btn-active"));
+    .forEach((b) => b.classList.remove("nav-btn-active"));
   const btn = document.querySelector(`.nav-btn[data-tab="${tab}"]`);
   if (btn) btn.classList.add("nav-btn-active");
 
