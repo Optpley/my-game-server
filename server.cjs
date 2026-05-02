@@ -47,7 +47,7 @@ function ensureUser(initDataUnsafe) {
         " " +
         (initDataUnsafe.user.last_name || ""),
       avatar: initDataUnsafe.user.photo_url || null,
-      stars: 0, // без стартовых 100
+      stars: 0,
     };
     users.set(key, u);
   } else {
@@ -184,7 +184,6 @@ function handleJoinLobby(userId, mode, bet) {
     avatar: u.avatar,
   });
 
-  // отправляем состояние лобби всем в нём
   broadcastToLobby(lobby, {
     type: "lobby_state",
     lobby: {
@@ -209,7 +208,6 @@ function startGameFromLobby(lobby) {
   const bet = lobby.bet;
   const players = lobby.players.map((p) => ({ ...p }));
 
-  // списываем ставку
   players.forEach((p) => {
     const u = users.get(String(p.id));
     if (u) {
@@ -238,7 +236,6 @@ function startGameFromLobby(lobby) {
   };
   games.set(gameId, game);
 
-  // уведомляем игроков
   broadcastToLobby(lobby, {
     type: "game_result",
     game: {
@@ -299,7 +296,6 @@ function simulateGame(mode, players) {
       }
     });
 
-    // для режима "выбывание" — каждый N тиков вылетает последний
     if (mode === "elimination" && tick > 0 && tick % 10 === 0) {
       const aliveNow = state.filter((s) => s.alive);
       if (aliveNow.length > 1) {
@@ -333,7 +329,7 @@ function simulateGame(mode, players) {
   return { winnerId, frames };
 }
 
-// ===== History helpers =====
+// ===== History =====
 function luckScore(game) {
   const winner = game.players.find((p) => p.id === game.winnerId);
   if (!winner) return 0;
@@ -365,7 +361,7 @@ app.post("/api/me", (req, res) => {
 // история игр
 app.get("/api/history", (req, res) => {
   const mode = req.query.mode || null;
-  const filter = req.query.filter || "latest"; // latest | biggest | lucky | mine
+  const filter = req.query.filter || "latest";
   const userId = req.query.userId || null;
 
   let list = Array.from(games.values());
@@ -506,5 +502,6 @@ app.get("/api/special-game", (req, res) => {
 server.listen(PORT, () => {
   console.log("Server listening on port", PORT);
 });
+
 
 
