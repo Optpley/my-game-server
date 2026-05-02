@@ -5,381 +5,257 @@ tg?.expand?.();
 let currentUser = null;
 let currentSettings = null;
 
-// ====== ВСПОМОГАТЕЛЬНЫЕ ======
+/* ====== IN-APP ALERT ====== */
 
-function setActiveTab(tab) {
-  document
-    .querySelectorAll(".nav-btn")
-    .forEach(el => el.classList.remove("nav-btn-active"));
-  document
-    .querySelector(`.nav-btn[data-tab="${tab}"]`)
-    ?.classList.add("nav-btn-active");
+function alertInApp(text) {
+  const box = document.createElement("div");
+  box.className = "alert-box";
+  box.innerText = text;
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 2200);
 }
 
-function setHeaderBalance() {
-  const el = document.getElementById("header-balance");
-  if (!el || !currentUser) return;
-  el.innerText = `Баланс: ${currentUser.stars_balance} ⭐`;
+/* ====== SETTINGS PANEL ====== */
+
+function toggleSettings() {
+  const panel = document.getElementById("settings-panel");
+  panel.style.display = panel.style.display === "block" ? "none" : "block";
 }
 
-// ====== ЗАГРУЗКА ДАННЫХ ======
+/* ====== LOAD USER ====== */
 
-async function loadProfileAndSettings() {
+async function loadUser() {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
   const username = tg?.initDataUnsafe?.user?.username || "guest";
 
-  try {
-    const res = await fetch(API + "/me", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegram_id, username })
-    });
-    const data = await res.json();
-    if (data.ok) currentUser = data.user;
-  } catch (e) {
-    console.log("profile error", e);
-  }
+  const res = await fetch(API + "/me", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_id, username })
+  });
 
-  try {
-    const res2 = await fetch(API + "/settings");
-    const data2 = await res2.json();
-    if (data2.ok) currentSettings = data2;
-  } catch (e) {
-    console.log("settings error", e);
-  }
+  const data = await res.json();
+  if (data.ok) currentUser = data.user;
 
-  setHeaderBalance();
+  document.getElementById("header-balance").innerText =
+    currentUser.stars_balance + " ⭐";
 }
 
-// ====== ЭКРАН: ИГРЫ (как на макете) ======
+async function loadSettings() {
+  const res = await fetch(API + "/settings");
+  const data = await res.json();
+  if (data.ok) currentSettings = data;
+}
 
-function renderGamesScreen() {
+/* ====== RENDER: GAMES ====== */
+
+async function renderGames() {
   const root = document.getElementById("screen-content");
-  if (!root) return;
 
-  root.innerHTML = `
-    <section class="block">
-      <div class="block-header">
+  // Load tournament
+  const res = await fetch(API + "/tournament/active");
+  const t = await res.json();
+
+  let tournamentHTML = "";
+
+  if (t.ok && t.tournament) {
+    tournamentHTML = `
+      <section class="block">
         <div class="block-title">АКТИВНЫЙ ТУРНИР</div>
-        <span class="badge">Stars</span>
-      </div>
-      <div class="tournament-banner">
-        <div class="tournament-text">
-          <div class="tournament-title">Ice Arena и Гонка Шаров</div>
-          <div class="tournament-modes">Ставь звёзды в выбранных режимах и поднимайся в таблице лидеров.</div>
-          <div class="tournament-timer">Смена режима через <span id="tournament-timer">12:07</span></div>
-          <button class="btn-small btn-secondary" onclick="openTournamentScreen()">Открыть турнир</button>
+        <div class="tournament-banner">
+          <div class="tournament-text">
+            <div class="tournament-title">${t.tournament.name}</div>
+            <div class="tournament-modes">${t.tournament.modes.join(", ")}</div>
+            <button class="btn-secondary btn" onclick="renderTournament()">Открыть турнир</button>
+          </div>
+          <div class="tournament-image">картинка</div>
         </div>
-        <div class="tournament-image">
-          картинка<br/>турнира
-        </div>
-      </div>
-    </section>
-
-    <section class="block">
-      <div class="block-header">
-        <div class="block-title">Режимы</div>
-        <span class="badge">PvP</span>
-      </div>
-      <div class="block-subtitle">Выбери игру — справа будет картинка, позже подберём реальные арты.</div>
-    </section>
-
-    <section class="games-list">
-      <article class="game-card">
-        <div class="game-info">
-          <div class="game-title">Ice Arena</div>
-          <div class="game-desc">Классическое "тот, на ком остановится шайба — заберёт весь банк!"</div>
-          <div class="game-meta">Режим: арена, 2–8 игроков</div>
-          <button class="btn-small btn" onclick="joinGame('ice_arena')">Играть</button>
-        </div>
-        <div class="game-image game-ice">
-          картинка<br/>игры
-        </div>
-      </article>
-
-      <article class="game-card">
-        <div class="game-info">
-          <div class="game-title">Выбывание</div>
-          <div class="game-desc">Стенка убирается, кто останется последним...?</div>
-          <div class="game-meta">Режим: выживание</div>
-          <button class="btn-small btn" onclick="joinGame('knockout')">Играть</button>
-        </div>
-        <div class="game-image game-knockout">
-          картинка<br/>игры
-        </div>
-      </article>
-
-      <article class="game-card">
-        <div class="game-info">
-          <div class="game-title">Колесо</div>
-          <div class="game-desc">Выиграет ли шанс? Классический рандом с сектором удачи.</div>
-          <div class="game-meta">Режим: колесо</div>
-          <button class="btn-small btn" onclick="joinGame('wheel')">Играть</button>
-        </div>
-        <div class="game-image game-wheel">
-          картинка<br/>игры
-        </div>
-      </article>
-
-      <article class="game-card">
-        <div class="game-info">
-          <div class="game-title">Гонка шаров</div>
-          <div class="game-desc">Приедешь первым? Ставка на траекторию и скорость.</div>
-          <div class="game-meta">Режим: гонка</div>
-          <button class="btn-small btn" onclick="joinGame('race_balls')">Играть</button>
-        </div>
-        <div class="game-image game-race">
-          картинка<br/>игры
-        </div>
-      </article>
-
-      <article class="game-card">
-        <div class="game-info">
-          <div class="game-title">Красочная арена</div>
-          <div class="game-desc">Закрась больше других — территория решает всё.</div>
-          <div class="game-meta">Режим: цветовая битва</div>
-          <button class="btn-small btn" onclick="joinGame('color_arena')">Играть</button>
-        </div>
-        <div class="game-image game-color">
-          картинка<br/>игры
-        </div>
-      </article>
-
-      <article class="game-card">
-        <div class="game-info">
-          <div class="game-title">Микс режим</div>
-          <div class="game-desc">Уклоняйся от метеоритов! Смена режима каждые N секунд.</div>
-          <div class="game-meta">Режим: микс</div>
-          <button class="btn-small btn" onclick="joinGame('mix_mode')">Играть</button>
-        </div>
-        <div class="game-image game-mix">
-          картинка<br/>игры
-        </div>
-      </article>
-    </section>
-  `;
-}
-
-// ====== ЭКРАН: БАЛАНС ======
-
-function renderBalanceScreen() {
-  const root = document.getElementById("screen-content");
-  if (!root) return;
-
-  const stars = currentUser?.stars_balance ?? 0;
-  const spent = currentUser?.total_stars_spent ?? 0;
-  const won = currentUser?.total_stars_won ?? 0;
-  const withdrawn = currentUser?.total_stars_withdrawn ?? 0;
-
-  const rate = currentSettings?.stars_per_ton ?? 1000;
-  const fee = currentSettings?.withdraw_fee_percent ?? 5;
-
-  root.innerHTML = `
-    <section class="block">
-      <div class="block-header">
-        <div class="block-title">Ваш баланс</div>
-        <span class="badge">Звёзды</span>
-      </div>
-      <div class="balance-value">${stars} ⭐</div>
-      <div class="balance-sub">~ ${(stars / rate).toFixed(4)} TON (1 TON = ${rate} ⭐)</div>
-    </section>
-
-    <section class="block">
-      <div class="block-title">Действия</div>
-      <button class="btn" onclick="alert('Пополнение через Stars / CryptoBot — позже')">Пополнить</button>
-      <button class="btn btn-secondary" onclick="openWithdraw()">Вывести TON</button>
-      <div class="text-muted" style="margin-top:8px;">
-        Комиссия на вывод: ${fee}% от суммы в TON.
-      </div>
-    </section>
-
-    <section class="block">
-      <div class="block-title">Статистика</div>
-      <div class="stat-row"><span>Потрачено звёзд</span><span>${spent}</span></div>
-      <div class="stat-row"><span>Выиграно звёзд</span><span>${won}</span></div>
-      <div class="stat-row"><span>Выведено звёзд</span><span>${withdrawn}</span></div>
-    </section>
-  `;
-}
-
-function openWithdraw() {
-  alert("Тут будет экран вывода TON (можем дописать позже).");
-}
-
-// ====== ЭКРАН: ПРОФИЛЬ ======
-
-function renderProfileScreen() {
-  const root = document.getElementById("screen-content");
-  if (!root) return;
-
-  const username = currentUser?.username || "guest";
-  const tid = currentUser?.telegram_id || "-";
-
-  root.innerHTML = `
-    <section class="block">
-      <div class="block-title">Профиль</div>
-      <div class="profile-row"><span>Username</span><span>@${username}</span></div>
-      <div class="profile-row"><span>Telegram ID</span><span>${tid}</span></div>
-    </section>
-
-    <section class="block">
-      <div class="block-title">Настройки</div>
-      <button class="btn btn-secondary" onclick="alert('Смена языка позже')">Сменить язык</button>
-      <button class="btn btn-secondary" onclick="alert('Стример‑режим позже')">Стример‑режим</button>
-    </section>
-
-    <section class="block">
-      <div class="block-title">О проекте</div>
-      <div class="text-muted">
-        AllPvpGamesHub — хаб PvP‑игр, турниров и ставок на звёзды.
-      </div>
-    </section>
-  `;
-}
-
-// ====== ЭКРАН: ТУРНИР ======
-
-async function openTournamentScreen() {
-  const root = document.getElementById("screen-content");
-  if (!root) return;
-
-  root.innerHTML = `
-    <section class="block">
-      <div class="block-title">Турнир</div>
-      <div class="text-muted">Загрузка активного турнира...</div>
-    </section>
-  `;
-
-  try {
-    const res = await fetch(API + "/tournament/active");
-    const data = await res.json();
-
-    if (!data.ok || !data.tournament) {
-      root.innerHTML = `
-        <section class="block">
-          <div class="block-title">Турнир</div>
-          <div class="text-muted">Сейчас нет активного турнира.</div>
-        </section>
-      `;
-      return;
-    }
-
-    const t = data.tournament;
-    const prizes = t.prizes || [];
-    const lb = t.leaderboard || [];
-
-    let prizesHtml = "";
-    if (Array.isArray(prizes)) {
-      prizesHtml = prizes
-        .map(
-          (p, i) =>
-            `<div class="stat-row"><span>${i + 1} место</span><span>${p}</span></div>`
-        )
-        .join("");
-    }
-
-    let lbHtml = "";
-    if (Array.isArray(lb)) {
-      lbHtml = lb
-        .map(
-          (row, i) =>
-            `<div class="lb-row"><span>${i + 1}. ${row.username || "Игрок"}</span><span>${row.stars_placed} ⭐</span></div>`
-        )
-        .join("");
-    }
-
-    root.innerHTML = `
-      <section class="block">
-        <div class="block-header">
-          <div class="block-title">${t.name}</div>
-          <span class="badge">Активен</span>
-        </div>
-        <div class="block-subtitle">ID: ${t.id}</div>
-      </section>
-
-      <section class="block">
-        <div class="block-title">Призы</div>
-        ${prizesHtml || '<div class="text-muted">Призы не указаны</div>'}
-      </section>
-
-      <section class="block">
-        <div class="block-title">Таблица лидеров</div>
-        ${lbHtml || '<div class="text-muted">Пока нет участников</div>'}
-      </section>
-    `;
-  } catch (e) {
-    root.innerHTML = `
-      <section class="block">
-        <div class="block-title">Турнир</div>
-        <div class="text-muted">Ошибка загрузки турнира.</div>
       </section>
     `;
   }
+
+  root.innerHTML = `
+    ${tournamentHTML}
+
+    <article class="game-card">
+      <div class="game-info">
+        <div class="game-title">Ice Arena</div>
+        <div class="game-desc">Классическое "тот, на ком остановится шайба — заберёт весь банк!"</div>
+        <button class="btn" onclick="joinGame('ice_arena')">Играть</button>
+      </div>
+      <div class="game-image game-ice">картинка</div>
+    </article>
+
+    <article class="game-card">
+      <div class="game-info">
+        <div class="game-title">Выбывание</div>
+        <div class="game-desc">Стенка убирается, кто останется последним...?</div>
+        <button class="btn" onclick="joinGame('knockout')">Играть</button>
+      </div>
+      <div class="game-image game-knockout">картинка</div>
+    </article>
+
+    <article class="game-card">
+      <div class="game-info">
+        <div class="game-title">Колесо</div>
+        <div class="game-desc">Выиграет ли шанс?</div>
+        <button class="btn" onclick="joinGame('wheel')">Играть</button>
+      </div>
+      <div class="game-image game-wheel">картинка</div>
+    </article>
+
+    <article class="game-card">
+      <div class="game-info">
+        <div class="game-title">Гонка шаров</div>
+        <div class="game-desc">Приедешь первым?</div>
+        <button class="btn" onclick="joinGame('race_balls')">Играть</button>
+      </div>
+      <div class="game-image game-race">картинка</div>
+    </article>
+
+    <article class="game-card">
+      <div class="game-info">
+        <div class="game-title">Красочная арена</div>
+        <div class="game-desc">Закрась больше других</div>
+        <button class="btn" onclick="joinGame('color_arena')">Играть</button>
+      </div>
+      <div class="game-image game-color">картинка</div>
+    </article>
+
+    <article class="game-card">
+      <div class="game-info">
+        <div class="game-title">Микс режим</div>
+        <div class="game-desc">Уклоняйся от метеоритов!</div>
+        <button class="btn" onclick="joinGame('mix_mode')">Играть</button>
+      </div>
+      <div class="game-image game-mix">картинка</div>
+    </article>
+  `;
 }
 
-// ====== ВХОД В ИГРУ / ЛОББИ ======
+/* ====== JOIN GAME → LOBBY ====== */
 
 async function joinGame(mode) {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
   const username = tg?.initDataUnsafe?.user?.username || "guest";
-  const amount = 1;
 
-  try {
-    const res = await fetch(API + "/game/join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegram_id, username, mode, amount })
-    });
+  const res = await fetch(API + "/game/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegram_id, username, mode, amount: 1 })
+  });
 
-    const data = await res.json();
-    if (!data.ok) {
-      alert("Ошибка: " + (data.error || "UNKNOWN"));
-      return;
-    }
+  const data = await res.json();
 
-    renderLobbyScreen(mode, data.game_id);
-  } catch (e) {
-    alert("Ошибка соединения с сервером");
+  if (!data.ok) {
+    alertInApp("Ошибка: " + data.error);
+    return;
   }
+
+  renderLobby(mode, data.game_id);
 }
 
-function renderLobbyScreen(mode, gameId) {
+/* ====== LOBBY ====== */
+
+function renderLobby(mode, id) {
   const root = document.getElementById("screen-content");
-  if (!root) return;
 
   root.innerHTML = `
     <section class="block">
       <div class="block-title">Лобби</div>
-      <div class="block-subtitle">Режим: ${mode}</div>
-      <div class="text-muted" style="margin-top:8px;">
-        ID лобби: ${gameId}. Здесь позже будет список игроков, таймер и WebSocket‑обновления.
-      </div>
+      <div class="text-muted">Режим: ${mode}</div>
+      <div class="text-muted">ID: ${id}</div>
+      <div style="margin-top:10px;">Ожидание игроков...</div>
     </section>
 
     <section class="block">
-      <div class="block-title">Игроки</div>
-      <div class="stat-row"><span>Вы</span><span>⭐ ставка сделана</span></div>
-      <div class="stat-row text-muted"><span>Ожидание соперника...</span><span></span></div>
-    </section>
-
-    <section class="block">
-      <button class="btn btn-secondary" onclick="setTab('games')">Выйти в игры</button>
+      <button class="btn-secondary btn" onclick="setTab('games')">Назад</button>
     </section>
   `;
 }
 
-// ====== ПЕРЕКЛЮЧЕНИЕ ТАБОВ ======
+/* ====== BALANCE ====== */
 
-function setTab(tab) {
-  setActiveTab(tab);
-  if (tab === "games") renderGamesScreen();
-  if (tab === "balance") renderBalanceScreen();
-  if (tab === "profile") renderProfileScreen();
+function renderBalance() {
+  const root = document.getElementById("screen-content");
+
+  root.innerHTML = `
+    <section class="block">
+      <div class="block-title">Ваш баланс</div>
+      <div class="balance-value">${currentUser.stars_balance} ⭐</div>
+    </section>
+
+    <section class="block">
+      <button class="btn" onclick="alertInApp('Пополнение позже')">Пополнить</button>
+      <button class="btn-secondary btn" onclick="alertInApp('Вывод позже')">Вывести</button>
+    </section>
+  `;
 }
 
-// ====== ИНИЦИАЛИЗАЦИЯ ======
+/* ====== PROFILE ====== */
 
-(async function init() {
-  await loadProfileAndSettings();
-  setTab("games");
-})();
+function renderProfile() {
+  const root = document.getElementById("screen-content");
+
+  root.innerHTML = `
+    <section class="block">
+      <div class="block-title">Профиль</div>
+      <div class="profile-row"><span>Username</span><span>@${currentUser.username}</span></div>
+      <div class="profile-row"><span>ID</span><span>${currentUser.telegram_id}</span></div>
+    </section>
+  `;
+}
+
+/* ====== ADMIN PANEL ====== */
+
+function openAdminPanel() {
+  const root = document.getElementById("screen-content");
+
+  root.innerHTML = `
+    <section class="block">
+      <div class="block-title">Админ‑панель</div>
+      <button class="btn" onclick="alertInApp('Создание турнира позже')">Создать турнир</button>
+      <button class="btn" onclick="alertInApp('Управление играми позже')">Управление играми</button>
+    </section>
+  `;
+}
+
+/* ====== TOURNAMENT ====== */
+
+async function renderTournament() {
+  const root = document.getElementById("screen-content");
+
+  const res = await fetch(API + "/tournament/active");
+  const data = await res.json();
+
+  if (!data.ok || !data.tournament) {
+    alertInApp("Турнира нет");
+    return;
+  }
+
+  const t = data.tournament;
+
+  root.innerHTML = `
+    <section class="block">
+      <div class="block-title">${t.name}</div>
+      <div class="text-muted">ID: ${t.id}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-title">Призы</div>
+      ${t.prizes.map((p,i)=>`<div class="profile-row"><span>${i+1} место</span><span>${p}</span></div>`).join("")}
+    </section>
+
+    <section class="block">
+      <button class="btn-secondary btn" onclick="setTab('games')">Назад</button>
+    </section>
+  `;
+}
+
+/* ====== TABS ====== */
+
+function setTab(tab) {
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("nav-btn-active"));
+  document.querySelector(`.nav-btn[data-tab="${tab}"]`).classList.add("nav-btn-active");
+
+  if
