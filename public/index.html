@@ -9,28 +9,29 @@
 <body>
 
   <div id="app">
-    <h1>AllPvpGamesHub</h1>
-
-    <div class="block">
-      <h2>Ваш баланс</h2>
-      <div id="balance">Загрузка...</div>
+    <div id="screen-header">
+      <div id="screen-title">Игры</div>
+      <div id="screen-subtitle">AllPvpGamesHub</div>
     </div>
 
-    <div class="block">
-      <h2>Игры</h2>
-      <button class="btn" onclick="joinGame('arena')">Арена</button>
-      <button class="btn" onclick="joinGame('balls')">Шары</button>
-      <button class="btn" onclick="joinGame('race')">Гонка</button>
-    </div>
+    <div id="screen-content"></div>
 
-    <div class="block">
-      <h2>Турнир</h2>
-      <button class="btn" onclick="openTournament()">Открыть турнир</button>
+    <div class="bottom-nav">
+      <div class="nav-btn" data-tab="games" onclick="setTab('games')">
+        <div class="nav-icon">🎮</div>
+        <div class="nav-label">Игры</div>
+      </div>
+      <div class="nav-btn" data-tab="balance" onclick="setTab('balance')">
+        <div class="nav-icon">💰</div>
+        <div class="nav-label">Баланс</div>
+      </div>
+      <div class="nav-btn" data-tab="profile" onclick="setTab('profile')">
+        <div class="nav-icon">👤</div>
+        <div class="nav-label">Профиль</div>
+      </div>
     </div>
-
   </div>
 
   <script src="app.js"></script>
 </body>
 </html>
-
