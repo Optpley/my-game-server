@@ -5,7 +5,7 @@
 body {
   margin: 0;
   padding: 0;
-  background: radial-gradient(circle at top, #1b2a5a 0, #050814 55%, #02030a 100%);
+  background: radial-gradient(circle at top, #1b2645 0, #050814 55%, #02030a 100%);
   color: #ffffff;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -15,33 +15,51 @@ body {
   padding-bottom: 80px;
 }
 
-#screen-header {
-  padding: 18px 18px 10px 18px;
+/* HEADER */
+
+#main-header {
+  padding: 16px 16px 10px 16px;
 }
 
-#screen-title {
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-title {
   font-size: 22px;
   font-weight: 700;
 }
 
-#screen-subtitle {
+.app-balance {
   font-size: 13px;
-  opacity: 0.7;
-  margin-top: 2px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
+
+.app-subtitle {
+  font-size: 13px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+/* MAIN */
 
 #screen-content {
   padding: 0 14px 14px 14px;
 }
 
-/* Блоки */
+/* BLOCKS */
 
 .block {
   background: rgba(9, 14, 35, 0.96);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 14px;
   margin-bottom: 12px;
-  border: 1px solid rgba(70, 90, 180, 0.4);
+  border: 1px solid rgba(70, 90, 180, 0.35);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
 }
 
@@ -49,7 +67,6 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
 }
 
 .block-title {
@@ -57,20 +74,142 @@ body {
   font-weight: 600;
 }
 
-.block-tag {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(45, 92, 255, 0.18);
-  border: 1px solid rgba(45, 92, 255, 0.6);
-}
-
 .block-subtitle {
   font-size: 13px;
   opacity: 0.8;
+  margin-top: 4px;
 }
 
-/* Кнопки */
+.badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+/* TOURNAMENT BANNER */
+
+.tournament-banner {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.tournament-text {
+  flex: 1;
+}
+
+.tournament-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tournament-modes {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+.tournament-timer {
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.tournament-image {
+  width: 90px;
+  height: 70px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #4a6cff, #f6c86a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  text-align: center;
+  padding: 6px;
+}
+
+/* GAME CARDS */
+
+.games-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.game-card {
+  display: flex;
+  align-items: stretch;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(10, 14, 30, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.game-info {
+  flex: 1;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.game-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.game-desc {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+.game-meta {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 6px;
+}
+
+.game-image {
+  width: 90px;
+  min-width: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  text-align: center;
+  padding: 6px;
+  color: #111;
+}
+
+/* Цвета карточек (мягкие, не неон) */
+
+.game-ice {
+  background: #f7e39a;
+}
+
+.game-knockout {
+  background: #f3a3a3;
+}
+
+.game-wheel {
+  background: #d9dde6;
+}
+
+.game-race {
+  background: #f6c28b;
+}
+
+.game-color {
+  background: #d7c0f5;
+}
+
+.game-mix {
+  background: #b9d7ff;
+}
+
+/* BUTTONS */
 
 .btn {
   width: 100%;
@@ -78,12 +217,12 @@ body {
   margin-top: 10px;
   border-radius: 10px;
   border: none;
-  background: linear-gradient(135deg, #2d5cff, #7b5cff);
+  background: linear-gradient(135deg, #2d5cff, #6a7dff);
   color: #ffffff;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(45, 92, 255, 0.45);
+  box-shadow: 0 8px 18px rgba(45, 92, 255, 0.35);
 }
 
 .btn-secondary {
@@ -96,10 +235,10 @@ body {
   width: auto;
   padding: 7px 12px;
   font-size: 13px;
-  margin-top: 0;
+  margin-top: 8px;
 }
 
-/* Нижняя навигация */
+/* BOTTOM NAV */
 
 .bottom-nav {
   position: fixed;
@@ -117,11 +256,16 @@ body {
 
 .nav-btn {
   flex: 1;
-  text-align: center;
+  height: 100%;
+  border: none;
+  background: transparent;
   color: #9ca7ff;
   font-size: 11px;
   cursor: pointer;
-  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .nav-btn-active {
@@ -137,90 +281,7 @@ body {
   font-size: 11px;
 }
 
-/* Списки */
-
-.game-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 10px;
-  border-radius: 12px;
-  background: rgba(12, 18, 45, 0.95);
-  margin-bottom: 8px;
-}
-
-.game-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.game-title {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.game-subtitle {
-  font-size: 12px;
-  opacity: 0.75;
-}
-
-.game-pill {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(45, 92, 255, 0.18);
-  border: 1px solid rgba(45, 92, 255, 0.6);
-}
-
-/* Турнир */
-
-.tournament-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.tournament-name {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.tournament-time {
-  font-size: 12px;
-  opacity: 0.8;
-}
-
-.tournament-prizes {
-  margin-top: 10px;
-  font-size: 13px;
-}
-
-.tournament-leaderboard {
-  margin-top: 10px;
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.lb-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  padding: 4px 0;
-}
-
-.lb-row:nth-child(1) {
-  color: #ffd66b;
-}
-
-.lb-row:nth-child(2) {
-  color: #d0e0ff;
-}
-
-.lb-row:nth-child(3) {
-  color: #ffb28b;
-}
-
-/* Баланс / профиль */
+/* BALANCE / PROFILE / LOBBY / TABLES */
 
 .balance-value {
   font-size: 26px;
@@ -233,44 +294,12 @@ body {
   opacity: 0.75;
 }
 
-.profile-row {
+.profile-row,
+.stat-row {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
   padding: 4px 0;
-}
-
-/* Лобби */
-
-.lobby-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.lobby-sub {
-  font-size: 13px;
-  opacity: 0.8;
-  margin-bottom: 10px;
-}
-
-.lobby-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  padding: 4px 0;
-}
-
-/* Мелочи */
-
-.badge {
-  display: inline-block;
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  margin-right: 4px;
 }
 
 .text-muted {
@@ -280,4 +309,23 @@ body {
 
 .center {
   text-align: center;
+}
+
+.lb-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.lb-row:nth-child(1) {
+  color: #e9c15a;
+}
+
+.lb-row:nth-child(2) {
+  color: #d0e0ff;
+}
+
+.lb-row:nth-child(3) {
+  color: #f0b29a;
 }
