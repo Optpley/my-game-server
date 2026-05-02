@@ -91,6 +91,13 @@ async function loadUser() {
   if (balEl && currentUser) {
     balEl.innerText = currentUser.stars_balance + " ⭐";
   }
+
+  const avatarEl = document.getElementById("header-avatar");
+  if (avatarEl && currentUser?.avatar_url) {
+    avatarEl.style.backgroundImage = `url(${currentUser.avatar_url})`;
+    avatarEl.style.backgroundSize = "cover";
+    avatarEl.style.backgroundPosition = "center";
+  }
 }
 
 async function loadSettings() {
@@ -152,10 +159,6 @@ async function renderGames() {
   root.innerHTML = `
     ${tournamentHTML}
 
-    <section class="block">
-      <div class="block-title">Режимы</div>
-    </section>
-
     <article class="game-card" onclick="openBetSheet('ice_arena')">
       <div class="game-info">
         <div class="game-title">Ice Arena</div>
@@ -170,14 +173,6 @@ async function renderGames() {
         <div class="game-desc">Стенки исчезают, остаётся один.</div>
       </div>
       <div class="game-image game-knockout">картинка</div>
-    </article>
-
-    <article class="game-card" onclick="openBetSheet('wheel')">
-      <div class="game-info">
-        <div class="game-title">Кольцо</div>
-        <div class="game-desc">Рулетка шанса.</div>
-      </div>
-      <div class="game-image game-wheel">картинка</div>
     </article>
 
     <article class="game-card" onclick="openBetSheet('race_balls')">
@@ -204,11 +199,6 @@ async function renderGames() {
       </div>
       <div class="game-image game-mix">картинка</div>
     </article>
-
-    <section class="block">
-      <div class="block-title">История игр</div>
-      <div id="history-list" class="text-muted">Загрузка...</div>
-    </section>
   `;
 
   const mixTimerEl = document.getElementById("mix-timer");
@@ -218,52 +208,9 @@ async function renderGames() {
         "Смена режима через " + formatDiffToMidnightFull();
     }, 1000);
   }
-
-  loadHistory();
 }
 
-/* ====== HISTORY ====== */
-
-async function loadHistory() {
-  const el = document.getElementById("history-list");
-  if (!el) return;
-
-  try {
-    const res = await fetch(API + "/games/history?limit=20");
-    const data = await res.json();
-    if (!data.ok) {
-      el.innerText = "Ошибка загрузки истории";
-      return;
-    }
-
-    if (!data.games || data.games.length === 0) {
-      el.innerText = "Пока нет завершённых игр";
-      return;
-    }
-
-    el.innerHTML = data.games
-      .map(
-        (g) => `
-        <div class="history-row">
-          <div>
-            <div class="history-title">#${g.id} • ${g.mode}</div>
-            <div class="history-sub">Банк: ${g.bank} ⭐ • Победитель: @${g.winner_username || "?"}</div>
-          </div>
-          ${
-            ["ice_arena", "race_balls", "knockout", "color_arena", "meteor_fall"].includes(
-              g.mode
-            )
-              ? `<button class="btn btn-secondary btn-xs" onclick="openReplay(${g.id})">Повтор</button>`
-              : ""
-          }
-        </div>
-      `
-      )
-      .join("");
-  } catch (e) {
-    el.innerText = "Ошибка истории";
-  }
-}
+/* ====== HISTORY (для повтора) ====== */
 
 async function openReplay(gameId) {
   try {
@@ -430,7 +377,7 @@ async function confirmBetAndJoin() {
   await joinGame(modeToJoin, bet);
 }
 
-/* ====== JOIN GAME → LOBBY ====== */
+/* ====== JOIN GAME → ЛОББИ ====== */
 
 async function joinGame(mode, bet) {
   const telegram_id = tg?.initDataUnsafe?.user?.id || 0;
@@ -476,9 +423,17 @@ function renderLobby(mode, id) {
 
   root.innerHTML = `
     <section class="block">
-      <div class="block-title">Лобби</div>
-      <div class="text-muted">Режим: ${mode}</div>
-      <div class="text-muted">ID игры: ${id}</div>
+      <div class="block-title">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span>${mode}</span>
+          <span 
+            style="width:22px;height:22px;border-radius:50%;background:#222;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;"
+            onclick="openHistoryPanel('${mode}')"
+            title="История игр"
+          >📜</span>
+        </span>
+        <span class="text-muted" style="font-size:12px;">ID игры: ${id}</span>
+      </div>
       <div style="margin-top:10px;">Онлайн игроки:</div>
       <div id="lobby-players" class="text-muted" style="margin-top:4px;">подключение...</div>
     </section>
@@ -522,6 +477,118 @@ function renderLobby(mode, id) {
 function leaveLobbyAndBack() {
   closeLobbyWS();
   setTab("games");
+}
+
+/* ====== HISTORY SHEET (иконка в лобби) ====== */
+
+let historySort = "latest";
+let historySheetStartY = null;
+let historySheetCurrentY = 0;
+
+function openHistoryPanel(mode) {
+  const overlay = document.getElementById("history-overlay");
+  const sheet = document.getElementById("history-sheet");
+  if (!overlay || !sheet) return;
+
+  overlay.classList.remove("hidden");
+  sheet.style.transform = "translateY(0)";
+
+  overlay.addEventListener(
+    "click",
+    (e) => {
+      if (e.target === overlay) closeHistoryPanel();
+    },
+    { once: true }
+  );
+
+  sheet.addEventListener("touchstart", onHistorySheetTouchStart, { passive: true });
+  sheet.addEventListener("touchmove", onHistorySheetTouchMove, { passive: true });
+  sheet.addEventListener("touchend", onHistorySheetTouchEnd, { passive: true });
+
+  loadHistoryForMode(mode);
+}
+
+function closeHistoryPanel() {
+  const overlay = document.getElementById("history-overlay");
+  const sheet = document.getElementById("history-sheet");
+  if (!overlay || !sheet) return;
+
+  sheet.style.transform = "translateY(100%)";
+  setTimeout(() => {
+    overlay.classList.add("hidden");
+    sheet.style.transform = "translateY(0)";
+  }, 180);
+}
+
+function onHistorySheetTouchStart(e) {
+  historySheetStartY = e.touches[0].clientY;
+  historySheetCurrentY = 0;
+}
+function onHistorySheetTouchMove(e) {
+  if (historySheetStartY === null) return;
+  const y = e.touches[0].clientY;
+  const diff = y - historySheetStartY;
+  if (diff > 0) {
+    historySheetCurrentY = diff;
+    const sheet = document.getElementById("history-sheet");
+    if (sheet) sheet.style.transform = `translateY(${diff}px)`;
+  }
+}
+function onHistorySheetTouchEnd() {
+  const threshold = 80;
+  if (historySheetCurrentY > threshold) {
+    closeHistoryPanel();
+  } else {
+    const sheet = document.getElementById("history-sheet");
+    if (sheet) sheet.style.transform = "translateY(0)";
+  }
+  historySheetStartY = null;
+  historySheetCurrentY = 0;
+}
+
+function setHistorySort(sort) {
+  historySort = sort;
+  const activeMode = currentLobbyMode || null;
+  if (activeMode) loadHistoryForMode(activeMode);
+}
+
+async function loadHistoryForMode(mode) {
+  const el = document.getElementById("history-list-sheet");
+  if (!el) return;
+  el.innerText = "Загрузка...";
+
+  try {
+    const res = await fetch(
+      `${API}/games/history?limit=30&sort=${historySort}`
+    );
+    const data = await res.json();
+    if (!data.ok) {
+      el.innerText = "Ошибка истории";
+      return;
+    }
+
+    const list = (data.games || []).filter((g) => g.mode === mode);
+    if (!list.length) {
+      el.innerText = "Пока нет игр в этом режиме";
+      return;
+    }
+
+    el.innerHTML = list
+      .map(
+        (g) => `
+        <div class="history-row">
+          <div>
+            <div class="history-title">#${g.id} • ${g.mode}</div>
+            <div class="history-sub">Банк: ${g.bank} ⭐ • Победитель: @${g.winner_username || "?"}</div>
+          </div>
+          <button class="btn btn-xs btn-secondary" onclick="openReplay(${g.id})">▶</button>
+        </div>
+      `
+      )
+      .join("");
+  } catch (e) {
+    el.innerText = "Ошибка истории";
+  }
 }
 
 /* ====== WebSocket ====== */
@@ -607,7 +674,6 @@ function openLobbyWS(gameId, mode) {
       }
 
       loadUser();
-      loadHistory();
     }
   };
 
@@ -1480,3 +1546,4 @@ function setTab(tab) {
   await loadSettings();
   setTab("games");
 })();
+
