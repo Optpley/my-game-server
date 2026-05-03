@@ -5,6 +5,9 @@ const http = require("http");
 const { WebSocketServer } = require("ws");
 const bodyParser = require("body-parser");
 const crypto = require("crypto");
+const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN_HERE";
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 const app = express();
 const server = http.createServer(app);
@@ -19,13 +22,16 @@ const PORT = process.env.PORT || 3000;
 const users = new Map(); // id -> {id, username, name, avatar, stars}
 const lobbies = new Map(); // id -> {id, mode, bet, players, status}
 const games = new Map(); // id -> {id, mode, bet, players, winnerId, replay, createdAt}
-const tournaments = new Map(); // id -> {id, name, modes, gameNumber, durationMinutes, createdAt}
-const specialGames = new Map(); // id -> {id, gameNumber, durationMinutes, createdAt}
+const tournaments = new Map();
+const specialGames = new Map();
 
 let nextLobbyId = 1;
 let nextGameId = 1;
 let nextTournamentId = 1;
 let nextSpecialId = 1;
+
+// ТЕСТОВЫЙ РЕЖИМ — всем новым игрокам 100 звёзд
+const TEST_MODE = true;
 
 // ===== Helpers =====
 function getUserKeyFromInitData(initDataUnsafe) {
@@ -47,14 +53,13 @@ function ensureUser(initDataUnsafe) {
         " " +
         (initDataUnsafe.user.last_name || ""),
       avatar: initDataUnsafe.user.photo_url || null,
-      stars: 5, // ⭐ стартовый баланс
+      stars: TEST_MODE ? 100 : 5,
     };
     users.set(key, u);
   } else {
     u.username = initDataUnsafe.user.username || u.username;
     u.name =
       (initDataUnsafe.user.first_name || "") +
-      " " +
       (initDataUnsafe.user.last_name || "");
     u.avatar = initDataUnsafe.user.photo_url || u.avatar;
   }
@@ -65,10 +70,10 @@ function hashString(str) {
   return crypto.createHash("sha256").update(str).digest("hex");
 }
 
-function deterministicStep(username, seed) {
-  const h = hashString(username + ":" + seed);
+function rand01(seed) {
+  const h = hashString(seed);
   const num = parseInt(h.slice(0, 8), 16);
-  return (num % 7) + 1; // 1..7
+  return num / 0xffffffff;
 }
 
 // ===== WebSocket =====
@@ -251,79 +256,246 @@ function startGameFromLobby(lobby) {
   lobbies.delete(lobby.id);
 }
 
-// ===== Game mechanics =====
+// ===== Game physics =====
+
 function simulateGame(mode, players) {
   const frames = [];
-  const state = players.map((p) => ({
-    id: p.id,
-    username: p.username || String(p.id),
-    pos: 0,
-    alive: true,
-  }));
 
-  const maxTicks = 80;
-  const target = 100;
-  let winnerId = null;
+  // общие параметры арены
+  const width = 100;
+  const height = 100;
+  const radius = 4;
+  const dt = 0.1;
+  const maxTicks = 300;
 
-  for (let tick = 0; tick < maxTicks; tick++) {
-    const alivePlayers = state.filter((s) => s.alive);
-    if (alivePlayers.length <= 1) {
-      winnerId = alivePlayers[0].id;
-      break;
-    }
+  const state = players.map((p, idx) => {
+    const angle = (2 * Math.PI * idx) / players.length;
+    return {
+      id: p.id,
+      username: p.username || String(p.id),
+      x: 50 + Math.cos(angle) * 20,
+      y: 50 + Math.sin(angle) * 20,
+      vx: 0,
+      vy: 0,
+      alive: true,
+      score: 0,
+      colorCells: 0,
+    };
+  });
 
-    alivePlayers.forEach((s) => {
-      const step = deterministicStep(
-        s.username,
-        mode + ":" + tick.toString()
-      );
-      if (mode === "ice_arena") {
-        s.pos += step;
-      } else if (mode === "elimination") {
-        s.pos += step * 0.7;
-      } else if (mode === "ball_race") {
-        s.pos += step * 1.3;
-      } else if (mode === "color_arena") {
-        s.pos += step;
-      } else if (mode === "mix") {
-        const phase = tick % 4;
-        if (phase === 0) s.pos += step;
-        if (phase === 1) s.pos += step * 0.7;
-        if (phase === 2) s.pos += step * 1.3;
-        if (phase === 3) s.pos += step;
-      } else {
-        s.pos += step;
-      }
-    });
-
-    if (mode === "elimination" && tick > 0 && tick % 10 === 0) {
-      const aliveNow = state.filter((s) => s.alive);
-      if (aliveNow.length > 1) {
-        aliveNow.sort((a, b) => a.pos - b.pos);
-        aliveNow[0].alive = false;
-      }
-    }
-
+  function pushFrame() {
     frames.push(
       state.map((s) => ({
         id: s.id,
-        pos: s.pos,
+        x: s.x,
+        y: s.y,
         alive: s.alive,
       }))
     );
+  }
 
-    const reached = state.filter((s) => s.alive && s.pos >= target);
-    if (reached.length > 0) {
-      reached.sort((a, b) => b.pos - a.pos);
-      winnerId = reached[0].id;
-      break;
+  function applyBorders(s) {
+    if (!s.alive) return;
+    if (mode === "elimination") {
+      // вылет за круг
+      const dx = s.x - 50;
+      const dy = s.y - 50;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 45) {
+        s.alive = false;
+      }
+    } else {
+      // прямоугольная арена
+      if (s.x < radius) {
+        s.x = radius;
+        s.vx = -s.vx * 0.6;
+      }
+      if (s.x > width - radius) {
+        s.x = width - radius;
+        s.vx = -s.vx * 0.6;
+      }
+      if (s.y < radius) {
+        s.y = radius;
+        s.vy = -s.vy * 0.6;
+      }
+      if (s.y > height - radius) {
+        s.y = height - radius;
+        s.vy = -s.vy * 0.6;
+      }
     }
   }
 
+  function applyCollisions() {
+    for (let i = 0; i < state.length; i++) {
+      for (let j = i + 1; j < state.length; j++) {
+        const a = state[i];
+        const b = state[j];
+        if (!a.alive || !b.alive) continue;
+
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = radius * 2;
+
+        if (dist > 0 && dist < minDist) {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const overlap = minDist - dist;
+
+          a.x -= nx * (overlap / 2);
+          a.y -= ny * (overlap / 2);
+          b.x += nx * (overlap / 2);
+          b.y += ny * (overlap / 2);
+
+          const av = a.vx * nx + a.vy * ny;
+          const bv = b.vx * nx + b.vy * ny;
+          const p = (2 * (av - bv)) / 2;
+
+          a.vx -= p * nx * 0.8;
+          a.vy -= p * ny * 0.8;
+          b.vx += p * nx * 0.8;
+          b.vy += p * ny * 0.8;
+        }
+      }
+    }
+  }
+
+  function applyModeForces(tick) {
+    state.forEach((s, idx) => {
+      if (!s.alive) return;
+
+      const seedBase = mode + ":" + s.username + ":" + tick;
+
+      if (mode === "ice_arena") {
+        const angle =
+          rand01(seedBase + ":angle") * 2 * Math.PI;
+        const force = 8;
+        s.vx += Math.cos(angle) * force * dt;
+        s.vy += Math.sin(angle) * force * dt;
+        s.vx *= 0.98;
+        s.vy *= 0.98;
+      } else if (mode === "elimination") {
+        const dx = s.x - 50;
+        const dy = s.y - 50;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const push = 10;
+        s.vx += nx * push * dt;
+        s.vy += ny * push * dt;
+        s.vx *= 0.99;
+        s.vy *= 0.99;
+      } else if (mode === "ball_race") {
+        const targetX = 90;
+        const targetY = 50 + (idx - (state.length - 1) / 2) * 10;
+        const dx = targetX - s.x;
+        const dy = targetY - s.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const accel = 15;
+        s.vx += nx * accel * dt;
+        s.vy += ny * accel * dt;
+        s.vx *= 0.97;
+        s.vy *= 0.97;
+      } else if (mode === "color_arena") {
+        const angle =
+          rand01(seedBase + ":angle") * 2 * Math.PI;
+        const force = 10;
+        s.vx += Math.cos(angle) * force * dt;
+        s.vy += Math.sin(angle) * force * dt;
+        s.vx *= 0.96;
+        s.vy *= 0.96;
+      } else if (mode === "mix") {
+        const phase = tick % 4;
+        if (phase === 0) {
+          const angle =
+            rand01(seedBase + ":angle") * 2 * Math.PI;
+          const force = 8;
+          s.vx += Math.cos(angle) * force * dt;
+          s.vy += Math.sin(angle) * force * dt;
+        } else if (phase === 1) {
+          const dx = s.x - 50;
+          const dy = s.y - 50;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const push = 10;
+          s.vx += nx * push * dt;
+          s.vy += ny * push * dt;
+        } else if (phase === 2) {
+          const targetX = 90;
+          const targetY = 50 + (idx - (state.length - 1) / 2) * 10;
+          const dx = targetX - s.x;
+          const dy = targetY - s.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const accel = 15;
+          s.vx += nx * accel * dt;
+          s.vy += ny * accel * dt;
+        } else if (phase === 3) {
+          const angle =
+            rand01(seedBase + ":angle") * 2 * Math.PI;
+          const force = 10;
+          s.vx += Math.cos(angle) * force * dt;
+          s.vy += Math.sin(angle) * force * dt;
+        }
+        s.vx *= 0.97;
+        s.vy *= 0.97;
+      }
+    });
+  }
+
+  // простая сетка для color_arena
+  const gridSize = 10;
+  const grid = {};
+  function colorCell(s) {
+    if (mode !== "color_arena" && mode !== "mix") return;
+    const gx = Math.floor(s.x / gridSize);
+    const gy = Math.floor(s.y / gridSize);
+    const key = gx + ":" + gy;
+    if (!grid[key]) {
+      grid[key] = s.id;
+      s.colorCells++;
+    }
+  }
+
+  let winnerId = null;
+
+  for (let tick = 0; tick < maxTicks; tick++) {
+    const aliveCount = state.filter((s) => s.alive).length;
+    if (aliveCount <= 1) {
+      const alive = state.find((s) => s.alive);
+      winnerId = alive ? alive.id : state[0].id;
+      break;
+    }
+
+    applyModeForces(tick);
+
+    state.forEach((s) => {
+      if (!s.alive) return;
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      applyBorders(s);
+      colorCell(s);
+    });
+
+    applyCollisions();
+    pushFrame();
+  }
+
   if (!winnerId) {
-    const aliveNow = state.filter((s) => s.alive);
-    aliveNow.sort((a, b) => b.pos - a.pos);
-    winnerId = aliveNow[0].id;
+    if (mode === "color_arena") {
+      state.sort((a, b) => b.colorCells - a.colorCells);
+      winnerId = state[0].id;
+    } else if (mode === "ball_race") {
+      state.sort((a, b) => b.x - a.x);
+      winnerId = state[0].id;
+    } else {
+      state.sort((a, b) => b.x - a.x);
+      winnerId = state[0].id;
+    }
   }
 
   return { winnerId, frames };
@@ -450,6 +622,40 @@ app.post("/api/admin/give-stars", (req, res) => {
   });
 });
 
+// рассылка всем
+app.post("/api/admin/broadcast", async (req, res) => {
+  const { adminSecret, text } = req.body;
+
+  if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
+    return res.json({ ok: false, error: "bad_secret" });
+  }
+
+  if (!text || text.length < 1) {
+    return res.json({ ok: false, error: "empty_text" });
+  }
+
+  let sent = 0;
+
+  for (const u of users.values()) {
+    const chatId = u.id;
+    try {
+      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text,
+        }),
+      });
+      sent++;
+    } catch (e) {
+      console.log("Ошибка отправки пользователю", chatId);
+    }
+  }
+
+  res.json({ ok: true, sent });
+});
+
 // турниры
 app.post("/api/tournaments", (req, res) => {
   const { adminSecret, name, modes, gameNumber, durationMinutes } = req.body;
@@ -502,6 +708,7 @@ app.get("/api/special-game", (req, res) => {
 server.listen(PORT, () => {
   console.log("Server listening on port", PORT);
 });
+
 
 
 
