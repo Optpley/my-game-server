@@ -70,10 +70,9 @@ function connectWS() {
     }
 
     if (data.type === "game_result") {
+      // Игра произошла — анимация на арене, без отдельного окна
+      playArenaGame(data.game);
       alertInApp("Игра #" + data.game.id + " завершена!");
-      currentLobby = null;
-      updateLobbyUI();
-      startReplay(data.game);
     }
 
     if (data.type === "error") {
@@ -106,12 +105,15 @@ function updateLobbyUI() {
   const playersEl = $("lobby-players");
   const statusEl = $("lobby-status");
   const listEl = $("lobby-players-list");
+  const arenaTitle = $("arenaTitle");
 
   if (!currentLobby) {
     bankEl.textContent = "Банк - 0 ⭐";
     playersEl.textContent = "Игроки - 0/2 для старта";
     statusEl.textContent = "Ожидание игроков...";
     listEl.innerHTML = "";
+    arenaTitle.textContent = "Арена";
+    clearArena();
     return;
   }
 
@@ -122,6 +124,15 @@ function updateLobbyUI() {
 
   statusEl.textContent =
     currentLobby.status === "waiting" ? "Ожидание игроков..." : "Игра идёт...";
+
+  arenaTitle.textContent =
+    currentMode === "ice_arena"
+      ? "Арена"
+      : currentMode === "elimination"
+      ? "Выбивание"
+      : currentMode === "color_arena"
+      ? "Красочная арена"
+      : "Гонка шаров";
 
   listEl.innerHTML = "";
   currentLobby.players.forEach((p) => {
@@ -140,9 +151,130 @@ function updateLobbyUI() {
     row.appendChild(name);
     listEl.appendChild(row);
   });
+
+  // В выбивании и цветной арене — шары стоят на арене
+  if (
+    currentLobby.status === "waiting" &&
+    (currentMode === "elimination" || currentMode === "color_arena")
+  ) {
+    drawStaticBalls(currentLobby.players);
+  } else if (currentLobby.status === "waiting" && currentMode === "ice_arena") {
+    drawTerritories(currentLobby.players);
+  }
 }
 
-/* ===== История ===== */
+// ===== АРЕНА =====
+
+let arenaTimer = null;
+
+function clearArena() {
+  const arena = $("arena");
+  Array.from(arena.querySelectorAll(".replay-player, .arena-territory")).forEach(
+    (el) => el.remove()
+  );
+  if (arenaTimer) {
+    clearInterval(arenaTimer);
+    arenaTimer = null;
+  }
+}
+
+function drawStaticBalls(players) {
+  clearArena();
+  const arena = $("arena");
+  const width = arena.clientWidth;
+  const height = arena.clientHeight;
+
+  players.forEach((p, idx) => {
+    const el = document.createElement("div");
+    el.className = "replay-player";
+    el.textContent = idx + 1;
+    const angle = (idx / players.length) * Math.PI * 2;
+    const r = Math.min(width, height) / 3;
+    const cx = width / 2 + Math.cos(angle) * r;
+    const cy = height / 2 + Math.sin(angle) * r;
+    el.style.left = cx + "px";
+    el.style.top = cy + "px";
+    arena.appendChild(el);
+  });
+}
+
+function drawTerritories(players) {
+  clearArena();
+  const arena = $("arena");
+  const width = arena.clientWidth;
+  const height = arena.clientHeight;
+
+  players.forEach((p, idx) => {
+    const terr = document.createElement("div");
+    terr.className = "arena-territory";
+    terr.style.position = "absolute";
+    terr.style.top = "40px";
+    terr.style.bottom = "10px";
+    terr.style.border = "1px solid rgba(148,163,184,0.6)";
+    terr.style.background =
+      idx % 2 === 0
+        ? "rgba(59,130,246,0.15)"
+        : "rgba(244,63,94,0.15)";
+    const w = width / players.length;
+    terr.style.left = idx * w + "px";
+    terr.style.width = w + "px";
+    arena.appendChild(terr);
+
+    const el = document.createElement("div");
+    el.className = "replay-player";
+    el.textContent = idx + 1;
+    el.style.left = idx * w + w / 2 + "px";
+    el.style.top = height / 2 + "px";
+    arena.appendChild(el);
+  });
+}
+
+function playArenaGame(game) {
+  clearArena();
+  const arena = $("arena");
+  const width = arena.clientWidth;
+  const height = arena.clientHeight;
+
+  const players = game.players;
+  const frames = game.replay || [];
+
+  const playerEls = {};
+  players.forEach((p, idx) => {
+    const el = document.createElement("div");
+    el.className = "replay-player";
+    el.textContent = idx + 1;
+    arena.appendChild(el);
+    playerEls[p.id] = el;
+  });
+
+  let frameIndex = 0;
+  if (arenaTimer) clearInterval(arenaTimer);
+
+  arenaTimer = setInterval(() => {
+    if (frameIndex >= frames.length) {
+      clearInterval(arenaTimer);
+      arenaTimer = null;
+      return;
+    }
+
+    const frame = frames[frameIndex];
+    frame.forEach((f) => {
+      const el = playerEls[f.id];
+      if (!el) return;
+
+      const x = f.x / 100;
+      const y = f.y / 100;
+
+      el.style.left = 10 + x * (width - 30) + "px";
+      el.style.top = 40 + y * (height - 60) + "px";
+      el.style.opacity = f.alive ? "1" : "0.3";
+    });
+
+    frameIndex++;
+  }, 80);
+}
+
+// ===== История =====
 
 let currentFilter = "latest";
 
@@ -201,85 +333,15 @@ function renderHistory(games) {
       </div>
     `;
 
-    const btn = document.createElement("button");
-    btn.className = "history-replay-btn";
-    btn.textContent = "Повтор";
-    btn.addEventListener("click", () => playReplayFromHistory(g.id));
-
     main.appendChild(ava);
     main.appendChild(text);
     item.appendChild(main);
-    item.appendChild(btn);
 
     list.appendChild(item);
   });
 }
 
-/* ===== Реплей ===== */
-
-let replayTimer = null;
-
-async function playReplayFromHistory(id) {
-  const res = await fetch("/api/games/replay/" + id);
-  const data = await res.json();
-  if (!data.ok) {
-    alertInApp("Повтор недоступен");
-    return;
-  }
-  startReplay(data.game);
-}
-
-function startReplay(game) {
-  $("replayOverlay").style.display = "flex";
-  $("replayTitle").textContent = "Повтор #" + game.id + " • " + game.mode;
-
-  const canvas = $("replayCanvas");
-  Array.from(canvas.querySelectorAll(".replay-player")).forEach((el) =>
-    el.remove()
-  );
-
-  const players = game.players;
-  const frames = game.replay || [];
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
-
-  const playerEls = {};
-  players.forEach((p, idx) => {
-    const el = document.createElement("div");
-    el.className = "replay-player";
-    el.textContent = idx + 1;
-    canvas.appendChild(el);
-    playerEls[p.id] = el;
-  });
-
-  let frameIndex = 0;
-  if (replayTimer) clearInterval(replayTimer);
-
-  replayTimer = setInterval(() => {
-    if (frameIndex >= frames.length) {
-      clearInterval(replayTimer);
-      replayTimer = null;
-      return;
-    }
-
-    const frame = frames[frameIndex];
-    frame.forEach((f) => {
-      const el = playerEls[f.id];
-      if (!el) return;
-
-      const x = f.x / 100;
-      const y = f.y / 100;
-
-      el.style.left = 10 + x * (width - 30) + "px";
-      el.style.top = 40 + y * (height - 60) + "px";
-      el.style.opacity = f.alive ? "1" : "0.3";
-    });
-
-    frameIndex++;
-  }, 80);
-}
-
-/* ===== Init ===== */
+// ===== Init =====
 
 document.addEventListener("DOMContentLoaded", async () => {
   const params = new URLSearchParams(window.location.search);
@@ -341,13 +403,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       loadHistory();
     });
   });
-
-  $("replayClose").addEventListener("click", () => {
-    $("replayOverlay").style.display = "none";
-    if (replayTimer) clearInterval(replayTimer);
-    replayTimer = null;
-  });
 });
+
+
+
 
 
 
