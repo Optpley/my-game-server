@@ -1,4 +1,4 @@
-// server.cjs
+// server.cjs — PART 1/2
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
@@ -160,81 +160,13 @@ function createGame(mode, bet, players, winnerId, replay) {
     );
   });
 }
-
-function getGameHistory({ mode, filter, userId }) {
-  return new Promise((resolve, reject) => {
-    let sql = `SELECT g.*, 
-      (SELECT json_group_array(json_object(
-        'id', gp.user_id,
-        'username', gp.username,
-        'avatar', gp.avatar
-      )) FROM game_players gp WHERE gp.game_id = g.id) AS players_json
-      FROM games g`;
-    const params = [];
-
-    if (filter === "mine" && userId) {
-      sql +=
-        " JOIN game_players gp2 ON gp2.game_id = g.id WHERE gp2.user_id = ?";
-      params.push(userId);
-    } else if (mode) {
-      sql += " WHERE g.mode = ?";
-      params.push(mode);
-    }
-
-    sql += " ORDER BY g.id DESC LIMIT 50";
-
-    db.all(sql, params, (err, rows) => {
-      if (err) return reject(err);
-      const games = rows.map((r) => ({
-        id: r.id,
-        mode: r.mode,
-        bet: r.bet,
-        winnerId: r.winner_id,
-        createdAt: r.created_at,
-        players: JSON.parse(r.players_json || "[]"),
-      }));
-      resolve(games);
-    });
-  });
-}
-
-function getGameReplay(gameId) {
-  return new Promise((resolve, reject) => {
-    db.get(
-      `SELECT g.*, gr.replay_json,
-        (SELECT json_group_array(json_object(
-          'id', gp.user_id,
-          'username', gp.username,
-          'avatar', gp.avatar
-        )) FROM game_players gp WHERE gp.game_id = g.id) AS players_json
-       FROM games g
-       LEFT JOIN game_replays gr ON gr.game_id = g.id
-       WHERE g.id = ?`,
-      [gameId],
-      (err, row) => {
-        if (err) return reject(err);
-        if (!row) return resolve(null);
-        resolve({
-          id: row.id,
-          mode: row.mode,
-          bet: row.bet,
-          winnerId: row.winner_id,
-          createdAt: row.created_at,
-          players: JSON.parse(row.players_json || "[]"),
-          replay: row.replay_json ? JSON.parse(row.replay_json) : [],
-        });
-      }
-    );
-  });
-}
-
-// ===== SIMPLE GAME PHYSICS (РЕПЛЕЙ) =====
+// ===== SIMPLE GAME PHYSICS (REPLAY) =====
 
 function simulateGame(mode, players, bet) {
-  // Все режимы — одна схема: 2–4 шарика, двигаются по полю 0–100
   const frames = [];
   const ids = players.map((p) => p.id);
   const positions = {};
+
   ids.forEach((id, idx) => {
     positions[id] = {
       x: 10 + idx * 20,
@@ -252,6 +184,7 @@ function simulateGame(mode, players, bet) {
         frame.push({ id, x: p.x, y: p.y, alive: false });
         return;
       }
+
       let dx = (Math.random() - 0.5) * 8;
       let dy = (Math.random() - 0.5) * 8;
 
@@ -335,7 +268,6 @@ async function startGameForLobby(mode) {
 
   const players = lobby.players;
 
-  // списываем ставки
   for (const u of players) {
     await changeStars(u.db_id, -lobby.bet);
   }
@@ -390,7 +322,7 @@ async function startGameForLobby(mode) {
 
 // ===== API =====
 
-// /api/me — авторизация + 100 звёзд по умолчанию
+// /api/me
 app.post("/api/me", async (req, res) => {
   try {
     const init = req.body.initDataUnsafe;
@@ -423,7 +355,7 @@ app.post("/api/me", async (req, res) => {
   }
 });
 
-// История игр
+// История
 app.get("/api/history", async (req, res) => {
   try {
     const mode = req.query.mode || null;
@@ -450,7 +382,7 @@ app.get("/api/games/replay/:id", async (req, res) => {
   }
 });
 
-// Админ — выдать звёзды по username
+// Админ — звёзды
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
   if (adminSecret !== ADMIN_SECRET) {
@@ -464,13 +396,9 @@ app.post("/api/admin/give-stars", (req, res) => {
     "SELECT * FROM users WHERE username = ?",
     [username],
     async (err, row) => {
-      if (err) {
-        console.error(err);
-        return res.json({ ok: false, error: "db_error" });
-      }
-      if (!row) {
-        return res.json({ ok: false, error: "user_not_found" });
-      }
+      if (err) return res.json({ ok: false, error: "db_error" });
+      if (!row) return res.json({ ok: false, error: "user_not_found" });
+
       try {
         const updated = await changeStars(row.id, Number(amount));
         res.json({
@@ -482,14 +410,13 @@ app.post("/api/admin/give-stars", (req, res) => {
           },
         });
       } catch (e) {
-        console.error(e);
         res.json({ ok: false, error: "server_error" });
       }
     }
   );
 });
 
-// Админ — рассылка всем
+// Админ — рассылка
 app.post("/api/admin/broadcast", (req, res) => {
   const { adminSecret, text } = req.body;
   if (adminSecret !== ADMIN_SECRET) {
@@ -498,10 +425,8 @@ app.post("/api/admin/broadcast", (req, res) => {
   if (!text) return res.json({ ok: false, error: "no_text" });
 
   db.all("SELECT tg_id FROM users", async (err, rows) => {
-    if (err) {
-      console.error(err);
-      return res.json({ ok: false, error: "db_error" });
-    }
+    if (err) return res.json({ ok: false, error: "db_error" });
+
     let sent = 0;
     for (const r of rows) {
       try {
@@ -522,22 +447,17 @@ app.post("/api/admin/broadcast", (req, res) => {
           );
           sent++;
         }
-      } catch (e) {
-        console.error("broadcast error", e);
-      }
+      } catch {}
     }
     res.json({ ok: true, sent });
   });
 });
 
-// ===== TOURNAMENTS (простая заглушка) =====
+// ===== TOURNAMENTS =====
 
 let currentTournament = null;
 
 app.get("/api/tournament", (req, res) => {
-  if (!currentTournament) {
-    return res.json({ ok: true, tournament: null });
-  }
   res.json({ ok: true, tournament: currentTournament });
 });
 
@@ -576,12 +496,11 @@ wss.on("connection", (ws) => {
     if (data.type === "auth") {
       const init = data.initDataUnsafe;
       if (!init || !init.user || !init.user.id) return;
+
       let user = await getUserByTgId(init.user.id);
-      if (!user) {
-        user = await createUserFromInit(init);
-      } else {
-        user = await updateUserFromInit(user.id, init);
-      }
+      if (!user) user = await createUserFromInit(init);
+      else user = await updateUserFromInit(user.id, init);
+
       ws.user = {
         tg_id: user.tg_id,
         db_id: user.id,
@@ -589,6 +508,7 @@ wss.on("connection", (ws) => {
         first_name: user.first_name,
         avatar: user.avatar,
       };
+
       modes.forEach((m) => broadcastLobbyState(m));
       return;
     }
@@ -637,6 +557,7 @@ wss.on("connection", (ws) => {
 server.listen(PORT, () => {
   console.log("Server started on", PORT);
 });
+
 
 
 
