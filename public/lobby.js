@@ -1,5 +1,3 @@
-// lobby.js
-
 let tg = window.Telegram.WebApp;
 if (tg && tg.expand) tg.expand();
 
@@ -271,9 +269,9 @@ function startReplay(game) {
       const el = playerEls[f.id];
       if (!el) return;
 
-      const x = Math.min(1, f.pos / 100);
-      const yIndex = players.findIndex((p) => p.id === f.id);
-      const y = (yIndex + 1) / (players.length + 1);
+      // сервер даёт координаты в диапазоне 0–100
+      const x = f.x / 100;
+      const y = f.y / 100;
 
       el.style.left = 10 + x * (width - 30) + "px";
       el.style.top = 40 + y * (height - 60) + "px";
@@ -281,7 +279,7 @@ function startReplay(game) {
     });
 
     frameIndex++;
-  }, 200);
+  }, 80);
 }
 
 // ===== Init =====
@@ -300,10 +298,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  // Своя ставка — модалка
   $("bet-custom").addEventListener("click", () => {
-    const v = prompt("Введите свою ставку (звёзды):", "10");
+    $("bet-overlay").classList.remove("hidden");
+  });
+  $("bet-close").addEventListener("click", () => {
+    $("bet-overlay").classList.add("hidden");
+  });
+  $("bet-apply").addEventListener("click", () => {
+    const v = $("bet-input").value.trim();
     const n = Number(v);
-    if (!n || n <= 0) return;
+    if (!n || n <= 0) {
+      alertInApp("Некорректная ставка");
+      return;
+    }
+    $("bet-overlay").classList.add("hidden");
     joinLobby(n);
   });
 
@@ -343,4 +352,5 @@ document.addEventListener("DOMContentLoaded", async () => {
     replayTimer = null;
   });
 });
+
 
