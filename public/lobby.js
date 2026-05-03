@@ -15,18 +15,16 @@ let currentUser = null;
 let ws = null;
 let currentLobby = null;
 let currentMode = null;
-let currentBet = 20;
+let currentBet = 50;
 
 function $(id) {
   return document.getElementById(id);
 }
 
 function setAvatar(el, url) {
-  if (url) {
-    el.style.backgroundImage = `url("${url}")`;
-  } else {
-    el.style.backgroundImage = "linear-gradient(135deg,#4f46e5,#06b6d4)";
-  }
+  el.style.backgroundImage = url
+    ? `url("${url}")`
+    : "linear-gradient(135deg,#4f46e5,#06b6d4)";
 }
 
 function alertInApp(msg) {
@@ -144,7 +142,7 @@ function updateLobbyUI() {
   });
 }
 
-// ===== История =====
+/* ===== История ===== */
 
 let currentFilter = "latest";
 
@@ -217,7 +215,7 @@ function renderHistory(games) {
   });
 }
 
-// ===== Реплей =====
+/* ===== Реплей ===== */
 
 let replayTimer = null;
 
@@ -269,7 +267,6 @@ function startReplay(game) {
       const el = playerEls[f.id];
       if (!el) return;
 
-      // сервер даёт координаты в диапазоне 0–100
       const x = f.x / 100;
       const y = f.y / 100;
 
@@ -282,7 +279,7 @@ function startReplay(game) {
   }, 80);
 }
 
-// ===== Init =====
+/* ===== Init ===== */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const params = new URLSearchParams(window.location.search);
@@ -298,7 +295,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  // Своя ставка — модалка
   $("bet-custom").addEventListener("click", () => {
     $("bet-overlay").classList.remove("hidden");
   });
@@ -352,5 +348,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     replayTimer = null;
   });
 });
+
 
 
