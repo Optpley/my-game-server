@@ -2,7 +2,7 @@ let tg = window.Telegram.WebApp;
 if (tg && tg.expand) tg.expand();
 
 let initDataUnsafe = tg?.initDataUnsafe ?? {
-  user: { id: 1, username: "testuser", first_name: "Test", last_name: "User" }
+  user: { id: 1, username: "testuser", first_name: "Test", last_name: "User" },
 };
 
 let currentUser = null;
@@ -17,51 +17,47 @@ async function fetchMe() {
   const res = await fetch("/api/me", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ initDataUnsafe })
+    body: JSON.stringify({ initDataUnsafe }),
   });
   const data = await res.json();
   if (!data.ok) return;
 
   currentUser = data.user;
+
   document.getElementById("header-balance").textContent =
+    currentUser.stars + " ⭐";
+  document.getElementById("balance-value").textContent =
     currentUser.stars + " ⭐";
 
   setAvatar(document.getElementById("header-avatar"), currentUser.avatar);
   setAvatar(document.getElementById("profile-avatar"), currentUser.avatar);
 
   document.getElementById("profile-name").textContent = currentUser.name || "";
-  document.getElementById("profile-username").textContent =
-    currentUser.username ? "@" + currentUser.username : "";
+  document.getElementById("profile-username").textContent = currentUser.username
+    ? "@" + currentUser.username
+    : "";
   document.getElementById("profile-stars").textContent =
     "Баланс: " + currentUser.stars + " ⭐";
-
-  document.getElementById("balance-value").textContent =
-    currentUser.stars + " ⭐";
-}
-
-function showScreen(id) {
-  document
-    .querySelectorAll(".screen-inner")
-    .forEach((el) => el.classList.add("hidden"));
-  document.getElementById("screen-" + id).classList.remove("hidden");
 }
 
 function initTabs() {
+  const screens = {
+    games: document.getElementById("screen-games"),
+    balance: document.getElementById("screen-balance"),
+    profile: document.getElementById("screen-profile"),
+  };
+
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab;
+
       document
         .querySelectorAll(".nav-btn")
         .forEach((b) => b.classList.remove("nav-btn-active"));
       btn.classList.add("nav-btn-active");
 
-      if (tab === "games") {
-        showScreen("games");
-      } else if (tab === "balance") {
-        showScreen("balance");
-      } else if (tab === "profile") {
-        showScreen("profile");
-      }
+      Object.values(screens).forEach((s) => s.classList.add("hidden"));
+      screens[tab].classList.remove("hidden");
     });
   });
 }
@@ -151,7 +147,11 @@ function initProfile() {
   });
 
   document.getElementById("settings-btn").addEventListener("click", () => {
-    tg?.showAlert?.("Тут будут настройки (язык, режим стримера и т.д.)");
+    tg?.showPopup?.({
+      title: "Настройки",
+      message: "Тут будет:\n• смена языка\n• режим стримера\n• скрытие аватарок",
+      buttons: [{ id: "ok", type: "default", text: "Ок" }],
+    });
   });
 }
 
@@ -178,8 +178,8 @@ function initMixTimer() {
   initGames();
   initProfile();
   initMixTimer();
-  showScreen("games");
 })();
+
 
 
 
