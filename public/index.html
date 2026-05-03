@@ -21,51 +21,113 @@
     </div>
   </header>
 
-  <main id="screen-content" class="screen games-screen">
+  <main id="screen-content" class="screen">
 
-    <div class="games-left">
+    <!-- Экран ИГР -->
+    <div id="screen-games" class="screen-inner">
+      <div class="games-screen">
+        <div class="games-left">
 
-      <div class="game-btn" style="--bg-image: url('images/ice.jpg')" data-mode="ice_arena">
-        <div class="game-btn-title">Ice Arena</div>
-        <div class="game-btn-sub">Классическая арена</div>
+          <div class="game-btn game-btn-ice" data-mode="ice_arena">
+            <div class="game-btn-title">Ice Arena</div>
+            <div class="game-btn-sub">Классическая арена</div>
+          </div>
+
+          <div class="game-btn game-btn-elim" data-mode="elimination">
+            <div class="game-btn-title">Выбивание</div>
+            <div class="game-btn-sub">Каждый раунд вылетает один</div>
+          </div>
+
+          <div class="game-btn game-btn-ball" data-mode="ball_race">
+            <div class="game-btn-title">Гонка шаров</div>
+            <div class="game-btn-sub">Шары катятся по трассе</div>
+          </div>
+
+          <div class="game-btn game-btn-color" data-mode="color_arena">
+            <div class="game-btn-title">Красочная арена</div>
+            <div class="game-btn-sub">Закрашивай зоны</div>
+          </div>
+
+        </div>
+
+        <div class="mix-right">
+          <div class="mix-title">Микс режим</div>
+          <div class="mix-sub">Случайный режим дня</div>
+          <div id="mix-timer" class="mix-timer">12:55:17</div>
+        </div>
       </div>
-
-      <div class="game-btn" style="--bg-image: url('images/elimination.jpg')" data-mode="elimination">
-        <div class="game-btn-title">Выбивание</div>
-        <div class="game-btn-sub">Каждый раунд вылетает один</div>
-      </div>
-
-      <div class="game-btn" style="--bg-image: url('images/ball.jpg')" data-mode="ball_race">
-        <div class="game-btn-title">Гонка шаров</div>
-        <div class="game-btn-sub">Шары катятся по трассе</div>
-      </div>
-
-      <div class="game-btn" style="--bg-image: url('images/color.jpg')" data-mode="color_arena">
-        <div class="game-btn-title">Красочная арена</div>
-        <div class="game-btn-sub">Закрашивай зоны</div>
-      </div>
-
     </div>
 
-    <div class="mix-right" style="--bg-image: url('images/mix.jpg')">
-      <div class="mix-title">Микс режим</div>
-      <div class="mix-sub">Случайный режим дня</div>
-      <div id="mix-timer" class="mix-timer">12:55:17</div>
+    <!-- Экран БАЛАНС -->
+    <div id="screen-balance" class="screen-inner hidden">
+      <div class="card">
+        <div class="card-title">Ваш баланс</div>
+        <div id="balance-value" class="card-balance">0 ⭐</div>
+      </div>
+    </div>
+
+    <!-- Экран ПРОФИЛЬ -->
+    <div id="screen-profile" class="screen-inner hidden">
+      <div class="card profile-card">
+        <div class="profile-header">
+          <div id="profile-avatar" class="profile-avatar"></div>
+          <div class="profile-info">
+            <div id="profile-name" class="profile-name"></div>
+            <div id="profile-username" class="profile-username"></div>
+            <div id="profile-stars" class="profile-stars"></div>
+          </div>
+          <button id="settings-btn" class="icon-btn" title="Настройки">⚙️</button>
+        </div>
+
+        <div class="profile-row">
+          <button id="admin-btn" class="icon-btn" title="Админ панель">😎</button>
+          <span class="profile-row-label">Админ панель</span>
+        </div>
+      </div>
     </div>
 
   </main>
 
   <nav class="nav">
-    <button class="nav-btn nav-btn-active" data-tab="games" onclick="setTab('games')">Игры</button>
-    <button class="nav-btn" data-tab="balance" onclick="setTab('balance')">Баланс</button>
-    <button class="nav-btn" data-tab="profile" onclick="setTab('profile')">Профиль</button>
+    <button class="nav-btn nav-btn-active" data-tab="games">Игры</button>
+    <button class="nav-btn" data-tab="balance">Баланс</button>
+    <button class="nav-btn" data-tab="profile">Профиль</button>
   </nav>
 
+</div>
+
+<!-- Оверлей админ-панели -->
+<div id="admin-overlay" class="overlay hidden">
+  <div class="overlay-panel">
+    <div class="overlay-header">
+      <div class="overlay-title">Админ панель</div>
+      <button id="admin-close" class="overlay-close">✕</button>
+    </div>
+    <div class="overlay-body">
+      <label class="field-label">Username игрока (без @)</label>
+      <input id="admin-username" class="field-input" placeholder="username" />
+
+      <label class="field-label">Сколько звёзд выдать</label>
+      <input id="admin-amount" class="field-input" type="number" placeholder="100" />
+
+      <button id="admin-send" class="primary-btn">Выдать звёзды</button>
+      <div id="admin-status" class="field-hint"></div>
+
+      <hr style="border:none;border-top:1px solid #1f2937;margin:8px 0;" />
+
+      <label class="field-label">Рассылка всем пользователям</label>
+      <textarea id="broadcast-text" class="field-input" rows="3" placeholder="Текст сообщения"></textarea>
+
+      <button id="broadcast-send" class="primary-btn">Отправить всем</button>
+      <div id="broadcast-status" class="field-hint"></div>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>
 </body>
 </html>
+
 
 
 
