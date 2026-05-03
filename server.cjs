@@ -47,7 +47,7 @@ function ensureUser(initDataUnsafe) {
         " " +
         (initDataUnsafe.user.last_name || ""),
       avatar: initDataUnsafe.user.photo_url || null,
-      stars: 0,
+      stars: 5, // ⭐ стартовый баланс
     };
     users.set(key, u);
   } else {
@@ -502,6 +502,7 @@ app.get("/api/special-game", (req, res) => {
 server.listen(PORT, () => {
   console.log("Server listening on port", PORT);
 });
+
 
 
 
