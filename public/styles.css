@@ -5,6 +5,8 @@ body {
   color: #fff;
 }
 
+/* HEADER */
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -33,6 +35,8 @@ body {
   background-color: #1f2937;
 }
 
+/* NAV */
+
 .nav {
   position: fixed;
   bottom: 0;
@@ -57,317 +61,87 @@ body {
   font-weight: 600;
 }
 
-.screen {
+/* GAMES SCREEN */
+
+.games-screen {
+  display: flex;
+  gap: 12px;
   padding: 12px;
   padding-bottom: 80px;
 }
 
-.game-card {
-  background: #11172f;
-  border: 1px solid #1d2442;
-  border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.game-title {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.game-desc {
-  font-size: 13px;
-  color: #9ca3af;
-  margin-top: 4px;
-}
-
-.btn-primary {
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: #4f46e5;
-  border: none;
-  color: #fff;
-  font-size: 14px;
-  width: 100%;
-}
-
-/* Lobby */
-
-.lobby-body {
-  margin: 0;
-  background: #0b1f4a;
-  font-family: system-ui, sans-serif;
-  color: #fff;
-}
-
-.lobby-wrapper {
-  padding: 12px;
-}
-
-.lobby-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.lobby-history-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 1px solid #1d2442;
-  background: #11172f;
-  color: #e5e7eb;
-  font-size: 16px;
-}
-
-.lobby-info {
+.games-left {
   flex: 1;
-}
-
-.lobby-bank {
-  color: #f97373;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.lobby-players {
-  color: #facc15;
-  font-size: 13px;
-  margin-top: 2px;
-}
-
-.lobby-status {
-  margin-top: 40px;
-  text-align: center;
-  font-size: 18px;
-  color: #4ade80;
-}
-
-.lobby-players-list {
-  margin-top: 16px;
-  font-size: 13px;
-}
-
-.lobby-player-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.lobby-player-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background-size: cover;
-  background-position: center;
-  background-color: #1f2937;
-}
-
-.lobby-player-name {
-  font-size: 13px;
-}
-
-.lobby-bets {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 12px;
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-}
-
-.lobby-bet-btn {
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #1d2442;
-  background: #11172f;
-  color: #e5e7eb;
-  font-size: 13px;
-}
-
-.lobby-bet-custom {
-  color: #f97373;
-}
-
-/* History overlay */
-
-.history-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.9);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-
-.history-panel {
-  width: 90%;
-  max-height: 80%;
-  background: #020617;
-  border-radius: 16px;
-  border: 1px solid #1d2442;
-  padding: 10px;
   display: flex;
   flex-direction: column;
+  gap: 12px;
 }
 
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+/* GAME BUTTONS */
 
-.history-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.history-close-btn {
-  border: none;
-  background: #11172f;
-  color: #e5e7eb;
-  border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.history-filters {
-  display: flex;
-  gap: 4px;
-  margin-top: 8px;
-  margin-bottom: 8px;
-}
-
-.history-filter-btn {
-  flex: 1;
-  padding: 4px 0;
-  border-radius: 999px;
-  border: 1px solid #1d2442;
-  background: #020617;
-  color: #9ca3af;
-  font-size: 11px;
-}
-
-.history-filter-active {
-  background: #4f46e5;
-  color: #fff;
-  border-color: #4f46e5;
-}
-
-.history-list {
-  flex: 1;
-  overflow-y: auto;
-  margin-top: 4px;
-}
-
-.history-item {
-  padding: 6px 2px;
-  border-bottom: 1px solid #111827;
-  font-size: 12px;
-}
-
-.history-item-main {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.history-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
+.game-btn {
+  height: 90px;
+  border-radius: 14px;
+  background-image: var(--bg-image);
   background-size: cover;
   background-position: center;
-  background-color: #1f2937;
-}
-
-.history-meta {
-  font-size: 11px;
-  color: #9ca3af;
-}
-
-.history-replay-btn {
-  margin-top: 4px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid #1d2442;
-  background: #020617;
-  color: #e5e7eb;
-  font-size: 11px;
-}
-
-/* Replay */
-
-.replay-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.95);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 60;
-}
-
-.replay-canvas {
-  width: 90%;
-  max-width: 360px;
-  height: 260px;
-  background: #020617;
-  border-radius: 16px;
-  border: 1px solid #1d2442;
   position: relative;
-  overflow: hidden;
-}
-
-.replay-header {
-  position: absolute;
-  top: 6px;
-  left: 8px;
-  right: 8px;
+  padding: 12px;
   display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: #9ca3af;
+  flex-direction: column;
+  justify-content: flex-end;
+  box-shadow: 0 0 8px rgba(0,0,0,0.4);
 }
 
-.replay-close-btn {
-  border: none;
-  background: #11172f;
-  color: #e5e7eb;
-  border-radius: 999px;
-  padding: 3px 8px;
-  font-size: 11px;
+.game-btn-title {
+  font-size: 17px;
+  font-weight: 700;
+  text-shadow: 0 0 4px rgba(0,0,0,0.7);
 }
 
-.replay-player {
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: #4f46e5;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-}
-
-/* Alert */
-
-.alert {
-  position: fixed;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #ef4444;
-  color: #f9fafb;
-  padding: 6px 10px;
-  border-radius: 999px;
+.game-btn-sub {
   font-size: 12px;
-  z-index: 100;
-  display: none;
+  color: #e5e7eb;
+  text-shadow: 0 0 4px rgba(0,0,0,0.7);
 }
+
+/* MIX BUTTON */
+
+.mix-right {
+  width: 120px;
+  border-radius: 14px;
+  background-image: var(--bg-image),
+    linear-gradient(180deg, #ff3b2f 0%, #ff7a00 100%);
+  background-size: cover;
+  background-blend-mode: overlay;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  box-shadow: 0 0 12px rgba(255, 90, 0, 0.45);
+}
+
+.mix-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.mix-sub {
+  font-size: 12px;
+  margin-bottom: 20px;
+  color: #ffe7d0;
+}
+
+.mix-timer {
+  margin-top: 20px;
+  font-size: 32px;
+  font-weight: 800;
+  text-align: center;
+  padding: 8px 0;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.15);
+  text-shadow: 0 0 6px rgba(0,0,0,0.7);
+}
+
 
