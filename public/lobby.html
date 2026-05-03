@@ -23,13 +23,31 @@
   <div id="lobby-players-list" class="lobby-players-list"></div>
 
   <div class="lobby-bets">
-    <button id="bet-custom" class="lobby-bet-btn lobby-bet-custom">своя сумма</button>
+    <button id="bet-custom" class="lobby-bet-btn lobby-bet-custom">Своя ставка</button>
     <button data-bet="20" class="lobby-bet-btn">20 ⭐</button>
     <button data-bet="50" class="lobby-bet-btn">50 ⭐</button>
     <button data-bet="200" class="lobby-bet-btn">200 ⭐</button>
+    <button data-bet="500" class="lobby-bet-btn">500 ⭐</button>
+    <button data-bet="1000" class="lobby-bet-btn">1000 ⭐</button>
   </div>
 </div>
 
+<!-- Оверлей своей ставки -->
+<div id="bet-overlay" class="overlay hidden">
+  <div class="overlay-panel">
+    <div class="overlay-header">
+      <div class="overlay-title">Своя ставка</div>
+      <button id="bet-close" class="overlay-close">✕</button>
+    </div>
+    <div class="overlay-body">
+      <label class="field-label">Ставка в звёздах</label>
+      <input id="bet-input" class="field-input" type="number" placeholder="10" />
+      <button id="bet-apply" class="primary-btn">Играть</button>
+    </div>
+  </div>
+</div>
+
+<!-- История -->
 <div id="historyOverlay" class="history-overlay">
   <div class="history-panel">
     <div class="history-header">
@@ -46,6 +64,7 @@
   </div>
 </div>
 
+<!-- Реплей -->
 <div id="replayOverlay" class="replay-overlay">
   <div class="replay-canvas" id="replayCanvas">
     <div class="replay-header">
