@@ -21,7 +21,39 @@
     </div>
   </header>
 
-  <main id="screen-content" class="screen"></main>
+  <main id="screen-content" class="screen games-screen">
+
+    <div class="games-left">
+
+      <div class="game-btn" style="--bg-image: url('images/ice.jpg')" data-mode="ice_arena">
+        <div class="game-btn-title">Ice Arena</div>
+        <div class="game-btn-sub">Классическая арена</div>
+      </div>
+
+      <div class="game-btn" style="--bg-image: url('images/elimination.jpg')" data-mode="elimination">
+        <div class="game-btn-title">Выбивание</div>
+        <div class="game-btn-sub">Каждый раунд вылетает один</div>
+      </div>
+
+      <div class="game-btn" style="--bg-image: url('images/ball.jpg')" data-mode="ball_race">
+        <div class="game-btn-title">Гонка шаров</div>
+        <div class="game-btn-sub">Шары катятся по трассе</div>
+      </div>
+
+      <div class="game-btn" style="--bg-image: url('images/color.jpg')" data-mode="color_arena">
+        <div class="game-btn-title">Красочная арена</div>
+        <div class="game-btn-sub">Закрашивай зоны</div>
+      </div>
+
+    </div>
+
+    <div class="mix-right" style="--bg-image: url('images/mix.jpg')">
+      <div class="mix-title">Микс режим</div>
+      <div class="mix-sub">Случайный режим дня</div>
+      <div id="mix-timer" class="mix-timer">12:55:17</div>
+    </div>
+
+  </main>
 
   <nav class="nav">
     <button class="nav-btn nav-btn-active" data-tab="games" onclick="setTab('games')">Игры</button>
@@ -34,6 +66,7 @@
 <script src="app.js"></script>
 </body>
 </html>
+
 
 
 
