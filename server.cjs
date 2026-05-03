@@ -167,61 +167,412 @@ function createGame(mode, bet, players, winnerId, replay) {
 
 
 // ======================= GAME SIMULATION =======================
-function simulateGame(mode, players, bet) {
+//
+// Все игры возвращают кадры формата:
+// frame: [{ id, x, y, r, alive, color, avatar, extra }]
+//
+
+function simulateIceArena(players, bet) {
   const frames = [];
   const ids = players.map((p) => p.id);
-  const pos = {};
 
-  ids.forEach((id, i) => {
-    pos[id] = { x: 20 + i * 20, y: 20 + i * 10, alive: true };
+  // Территория пропорциональна ставке: делим круг на секторы
+  const totalBet = players.reduce((s, p) => s + p.bet, 0) || 1;
+  let startAngle = 0;
+  const sectors = {};
+
+  players.forEach((p) => {
+    const portion = p.bet / totalBet;
+    const angle = portion * Math.PI * 2;
+    sectors[p.id] = { start: startAngle, end: startAngle + angle };
+    startAngle += angle;
   });
 
-  for (let t = 0; t < 60; t++) {
+  // Шайба
+  let puck = {
+    x: 50,
+    y: 50,
+    vx: (Math.random() - 0.5) * 2,
+    vy: (Math.random() - 0.5) * 2,
+  };
+
+  const steps = 200;
+  for (let t = 0; t < steps; t++) {
+    // Двигаем шайбу
+    puck.x += puck.vx * 2;
+    puck.y += puck.vy * 2;
+
+    if (puck.x < 5 || puck.x > 95) puck.vx *= -1;
+    if (puck.y < 5 || puck.y > 95) puck.vy *= -1;
+
+    // Позиции игроков — просто для визуала (по кругу)
     const frame = [];
-    ids.forEach((id) => {
-      const p = pos[id];
-      if (!p.alive) {
-        frame.push({ id, x: p.x, y: p.y, alive: false });
-        return;
-      }
+    players.forEach((p, idx) => {
+      const angleMid =
+        (sectors[p.id].start + sectors[p.id].end) / 2;
+      const px = 50 + Math.cos(angleMid) * 35;
+      const py = 50 + Math.sin(angleMid) * 35;
 
-      let dx = (Math.random() - 0.5) * 8;
-      let dy = (Math.random() - 0.5) * 8;
+      frame.push({
+        id: p.id,
+        x: px,
+        y: py,
+        r: 8,
+        alive: true,
+        color: p.color,
+        avatar: p.avatar,
+        extra: { sector: sectors[p.id] },
+      });
+    });
 
-      if (mode === "ice_arena") {
-        dx *= 0.7;
-        dy *= 0.7;
-      }
-      if (mode === "elimination") {
-        dy += 1;
-        if (p.y > 95 && Math.random() < 0.1) p.alive = false;
-      }
-      if (mode === "color_arena") {
-        dx *= 1.2;
-        dy *= 1.2;
-      }
-      if (mode === "ball_race") {
-        dy += 2;
-      }
-
-      p.x = Math.max(0, Math.min(100, p.x + dx));
-      p.y = Math.max(0, Math.min(100, p.y + dy));
-
-      frame.push({ id, x: p.x, y: p.y, alive: p.alive });
+    frame.push({
+      id: "puck",
+      x: puck.x,
+      y: puck.y,
+      r: 4,
+      alive: true,
+      color: "#ffffff",
+      avatar: null,
+      extra: { type: "puck" },
     });
 
     frames.push(frame);
   }
 
-  const alive = ids.filter((id) => pos[id].alive);
-  const winnerId = alive.length ? alive[Math.floor(Math.random() * alive.length)] : ids[0];
+  // Определяем победителя по углу шайбы
+  const dx = puck.x - 50;
+  const dy = puck.y - 50;
+  let angle = Math.atan2(dy, dx);
+  if (angle < 0) angle += Math.PI * 2;
+
+  let winnerId = players[0].id;
+  for (const p of players) {
+    const s = sectors[p.id];
+    if (angle >= s.start && angle <= s.end) {
+      winnerId = p.id;
+      break;
+    }
+  }
 
   return { winnerId, frames };
 }
 
+function simulateElimination(players) {
+  const frames = [];
+  const ids = players.map((p) => p.id);
+
+  const balls = {};
+  const totalBet = players.reduce((s, p) => s + p.bet, 0) || 1;
+
+  players.forEach((p, i) => {
+    const sizeFactor = 0.5 + p.bet / totalBet * 1.5; // больше ставка — больше мяч
+    const speedFactor = 1.5 - Math.min(1.2, p.bet / totalBet * 1.2); // больше ставка — медленнее
+    balls[p.id] = {
+      x: 20 + i * (60 / players.length),
+      y: 50,
+      vx: (Math.random() - 0.5) * speedFactor,
+      vy: (Math.random() - 0.5) * speedFactor,
+      r: 6 * sizeFactor,
+      alive: true,
+    };
+  });
+
+  const steps = 300;
+  for (let t = 0; t < steps; t++) {
+    const frame = [];
+
+    ids.forEach((id) => {
+      const b = balls[id];
+      if (!b.alive) {
+        frame.push({
+          id,
+          x: b.x,
+          y: b.y,
+          r: b.r,
+          alive: false,
+          color: b.color,
+          avatar: b.avatar,
+        });
+        return;
+      }
+
+      b.x += b.vx;
+      b.y += b.vy;
+
+      // Убрана часть стен: сверху и снизу можно вылететь
+      if (b.x < 5 || b.x > 95) b.vx *= -1;
+      if (b.y < 0 || b.y > 100) {
+        b.alive = false;
+      }
+
+      frame.push({
+        id,
+        x: b.x,
+        y: b.y,
+        r: b.r,
+        alive: b.alive,
+        color: players.find((p) => p.id === id).color,
+        avatar: players.find((p) => p.id === id).avatar,
+      });
+    });
+
+    frames.push(frame);
+
+    const aliveIds = ids.filter((id) => balls[id].alive);
+    if (aliveIds.length <= 1) break;
+  }
+
+  const aliveIds = ids.filter((id) => balls[id].alive);
+  const winnerId = aliveIds.length ? aliveIds[0] : ids[0];
+
+  return { winnerId, frames };
+}
+
+function simulateColorArena(players) {
+  const frames = [];
+  const ids = players.map((p) => p.id);
+
+  const balls = {};
+  const gridSize = 20;
+  const grid = Array.from({ length: gridSize }, () =>
+    Array.from({ length: gridSize }, () => null)
+  );
+
+  players.forEach((p, i) => {
+    balls[p.id] = {
+      x: 20 + i * (60 / players.length),
+      y: 50,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: (Math.random() - 0.5) * 1.5,
+      r: 5,
+    };
+  });
+
+  const steps = 250;
+  for (let t = 0; t < steps; t++) {
+    const frame = [];
+
+    ids.forEach((id) => {
+      const b = balls[id];
+
+      b.x += b.vx;
+      b.y += b.vy;
+
+      if (b.x < 5 || b.x > 95) b.vx *= -1;
+      if (b.y < 5 || b.y > 95) b.vy *= -1;
+
+      // Красим клетку
+      const gx = Math.floor((b.x / 100) * gridSize);
+      const gy = Math.floor((b.y / 100) * gridSize);
+      if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
+        grid[gy][gx] = id;
+      }
+
+      frame.push({
+        id,
+        x: b.x,
+        y: b.y,
+        r: b.r,
+        alive: true,
+        color: players.find((p) => p.id === id).color,
+        avatar: players.find((p) => p.id === id).avatar,
+      });
+    });
+
+    // Для фронта можно передавать карту
+    frame.push({
+      id: "grid",
+      x: 0,
+      y: 0,
+      r: 0,
+      alive: true,
+      color: "#000000",
+      avatar: null,
+      extra: { grid, gridSize },
+    });
+
+    frames.push(frame);
+  }
+
+  // Подсчёт площади
+  const score = {};
+  ids.forEach((id) => (score[id] = 0));
+  for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridSize; x++) {
+      const owner = grid[y][x];
+      if (owner) score[owner]++;
+    }
+  }
+
+  let winnerId = ids[0];
+  let best = -1;
+  ids.forEach((id) => {
+    if (score[id] > best) {
+      best = score[id];
+      winnerId = id;
+    }
+  });
+
+  return { winnerId, frames };
+}
+
+function simulateBallRace(players) {
+  const frames = [];
+  const ids = players.map((p) => p.id);
+
+  const balls = {};
+  players.forEach((p, i) => {
+    balls[p.id] = {
+      x: 20 + i * (60 / players.length),
+      y: 5,
+      vy: 0.5 + Math.random() * 0.5,
+      r: 5,
+    };
+  });
+
+  const steps = 250;
+  for (let t = 0; t < steps; t++) {
+    const frame = [];
+
+    ids.forEach((id) => {
+      const b = balls[id];
+
+      b.y += b.vy;
+      if (b.y > 95) b.y = 95;
+
+      frame.push({
+        id,
+        x: b.x,
+        y: b.y,
+        r: b.r,
+        alive: true,
+        color: players.find((p) => p.id === id).color,
+        avatar: players.find((p) => p.id === id).avatar,
+      });
+    });
+
+    frames.push(frame);
+  }
+
+  let winnerId = ids[0];
+  let bestY = -1;
+  ids.forEach((id) => {
+    if (balls[id].y > bestY) {
+      bestY = balls[id].y;
+      winnerId = id;
+    }
+  });
+
+  return { winnerId, frames };
+}
+
+function simulateMeteorFall(players) {
+  const frames = [];
+  const ids = players.map((p) => p.id);
+
+  const balls = {};
+  players.forEach((p, i) => {
+    balls[p.id] = {
+      x: 20 + i * (60 / players.length),
+      y: 90,
+      alive: true,
+      r: 5,
+    };
+  });
+
+  const meteors = [];
+
+  const steps = 250;
+  for (let t = 0; t < steps; t++) {
+    if (Math.random() < 0.2) {
+      meteors.push({
+        x: 10 + Math.random() * 80,
+        y: 0,
+        vy: 1 + Math.random() * 1.5,
+        r: 4,
+      });
+    }
+
+    meteors.forEach((m) => {
+      m.y += m.vy;
+    });
+
+    ids.forEach((id) => {
+      const b = balls[id];
+      if (!b.alive) return;
+
+      // простое уклонение: случайный шаг влево/вправо
+      const dir = Math.random() < 0.5 ? -1 : 1;
+      b.x += dir * 1.5;
+      if (b.x < 5) b.x = 5;
+      if (b.x > 95) b.x = 95;
+
+      // проверка столкновений
+      meteors.forEach((m) => {
+        const dx = m.x - b.x;
+        const dy = m.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < m.r + b.r) {
+          b.alive = false;
+        }
+      });
+    });
+
+    const frame = [];
+
+    ids.forEach((id) => {
+      const b = balls[id];
+      frame.push({
+        id,
+        x: b.x,
+        y: b.y,
+        r: b.r,
+        alive: b.alive,
+        color: players.find((p) => p.id === id).color,
+        avatar: players.find((p) => p.id === id).avatar,
+      });
+    });
+
+    meteors.forEach((m, idx) => {
+      frame.push({
+        id: "meteor_" + idx,
+        x: m.x,
+        y: m.y,
+        r: m.r,
+        alive: true,
+        color: "#ff4444",
+        avatar: null,
+        extra: { type: "meteor" },
+      });
+    });
+
+    frames.push(frame);
+
+    const aliveIds = ids.filter((id) => balls[id].alive);
+    if (aliveIds.length <= 1) break;
+  }
+
+  const aliveIds = ids.filter((id) => balls[id].alive);
+  const winnerId = aliveIds.length ? aliveIds[0] : ids[0];
+
+  return { winnerId, frames };
+}
+
+function simulateGame(mode, players, bet) {
+  // players: [{ id: tg_id, db_id, username, first_name, avatar, bet, color }]
+  if (mode === "ice_arena") return simulateIceArena(players, bet);
+  if (mode === "elimination") return simulateElimination(players);
+  if (mode === "color_arena") return simulateColorArena(players);
+  if (mode === "ball_race") return simulateBallRace(players);
+  if (mode === "meteor_fall") return simulateMeteorFall(players);
+
+  // fallback
+  return simulateBallRace(players);
+}
+
 
 // ======================= LOBBIES =======================
-const modes = ["ice_arena", "elimination", "ball_race", "color_arena"];
+const modes = ["ice_arena", "elimination", "ball_race", "color_arena", "meteor_fall"];
 const lobbies = {};
 
 modes.forEach((m) => {
@@ -248,6 +599,7 @@ function broadcastLobbyState(mode) {
         username: p.username,
         name: p.first_name || p.username,
         avatar: p.avatar,
+        bet: p.bet,
       })),
     },
   });
@@ -256,6 +608,30 @@ function broadcastLobbyState(mode) {
     if (ws.readyState === WebSocket.OPEN) ws.send(payload);
   });
 }
+
+function broadcastGlobalStats() {
+  const online = wsClients.size;
+
+  let totalBank = 0;
+  for (const m of modes) {
+    const lobby = lobbies[m];
+    if (lobby.bet && lobby.players.length > 0) {
+      totalBank += lobby.bet * lobby.players.length;
+    }
+  }
+
+  const payload = JSON.stringify({
+    type: "global_stats",
+    online,
+    totalBank,
+  });
+
+  wsClients.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  });
+}
+
+setInterval(broadcastGlobalStats, 1000);
 
 async function startGameForLobby(mode) {
   const lobby = lobbies[mode];
@@ -271,7 +647,20 @@ async function startGameForLobby(mode) {
     await changeStars(u.db_id, -lobby.bet);
   }
 
-  const sim = simulateGame(mode, players, lobby.bet);
+  const sim = simulateGame(
+    mode,
+    players.map((p) => ({
+      id: p.id,
+      db_id: p.db_id,
+      username: p.username,
+      first_name: p.first_name,
+      avatar: p.avatar,
+      bet: p.bet,
+      color: p.color,
+    })),
+    lobby.bet
+  );
+
   const winner = players.find((p) => p.id === sim.winnerId);
 
   if (winner) {
@@ -572,12 +961,19 @@ wss.on("connection", (ws) => {
       lobby.bet = bet;
 
       if (!lobby.players.find((p) => p.id === ws.user.tg_id)) {
+        // цвет просто для визуала, фронт может игнорить
+        const colors = ["#4ade80", "#60a5fa", "#f97316", "#f472b6", "#a855f7"];
+        const color =
+          colors[Math.floor(Math.random() * colors.length)];
+
         lobby.players.push({
           id: ws.user.tg_id,
           db_id: ws.user.db_id,
           username: ws.user.username,
           first_name: ws.user.first_name,
           avatar: ws.user.avatar,
+          bet,
+          color,
         });
       }
 
@@ -599,6 +995,7 @@ wss.on("connection", (ws) => {
 server.listen(PORT, () => {
   console.log("Server started on", PORT);
 });
+
 
 
 
