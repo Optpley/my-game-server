@@ -1,713 +1,643 @@
 // server.cjs
 const express = require("express");
-const path = require("path");
 const http = require("http");
-const { WebSocketServer } = require("ws");
-const bodyParser = require("body-parser");
-const crypto = require("crypto");
-const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN_HERE";
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
+const WebSocket = require("ws");
+const path = require("path");
+const sqlite3 = require("sqlite3").verbose();
+const fetch = require("node-fetch");
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
-
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, "public")));
-
+const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN";
+const ADMIN_SECRET = "dev_secret";
 const PORT = process.env.PORT || 3000;
 
-// ===== In-memory storage =====
-const users = new Map(); // id -> {id, username, name, avatar, stars}
-const lobbies = new Map(); // id -> {id, mode, bet, players, status}
-const games = new Map(); // id -> {id, mode, bet, players, winnerId, replay, createdAt}
-const tournaments = new Map();
-const specialGames = new Map();
+const app = express();
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-let nextLobbyId = 1;
-let nextGameId = 1;
-let nextTournamentId = 1;
-let nextSpecialId = 1;
+const db = new sqlite3.Database(path.join(__dirname, "db.sqlite"));
 
-// ТЕСТОВЫЙ РЕЖИМ — всем новым игрокам 100 звёзд
-const TEST_MODE = true;
-
-// ===== Helpers =====
-function getUserKeyFromInitData(initDataUnsafe) {
-  if (!initDataUnsafe || !initDataUnsafe.user) return null;
-  return String(initDataUnsafe.user.id);
-}
-
-function ensureUser(initDataUnsafe) {
-  const key = getUserKeyFromInitData(initDataUnsafe);
-  if (!key) return null;
-
-  let u = users.get(key);
-  if (!u) {
-    u = {
-      id: key,
-      username: initDataUnsafe.user.username || null,
-      name:
-        (initDataUnsafe.user.first_name || "") +
-        " " +
-        (initDataUnsafe.user.last_name || ""),
-      avatar: initDataUnsafe.user.photo_url || null,
-      stars: TEST_MODE ? 100 : 5,
-    };
-    users.set(key, u);
-  } else {
-    u.username = initDataUnsafe.user.username || u.username;
-    u.name =
-      (initDataUnsafe.user.first_name || "") +
-      (initDataUnsafe.user.last_name || "");
-    u.avatar = initDataUnsafe.user.photo_url || u.avatar;
-  }
-  return u;
-}
-
-function hashString(str) {
-  return crypto.createHash("sha256").update(str).digest("hex");
-}
-
-function rand01(seed) {
-  const h = hashString(seed);
-  const num = parseInt(h.slice(0, 8), 16);
-  return num / 0xffffffff;
-}
-
-// ===== WebSocket =====
-const wsClients = new Map(); // userId -> ws
-
-wss.on("connection", (ws) => {
-  let userId = null;
-
-  ws.on("message", (msg) => {
-    try {
-      const data = JSON.parse(msg.toString());
-      if (data.type === "auth") {
-        const u = ensureUser(data.initDataUnsafe);
-        if (!u) return;
-        userId = u.id;
-        wsClients.set(userId, ws);
-        ws.send(
-          JSON.stringify({
-            type: "auth_ok",
-            user: {
-              id: u.id,
-              username: u.username,
-              name: u.name,
-              avatar: u.avatar,
-              stars: u.stars,
-            },
-          })
-        );
-      }
-
-      if (!userId) return;
-
-      if (data.type === "join_lobby") {
-        handleJoinLobby(userId, data.mode, data.bet);
-      }
-    } catch (e) {
-      console.error("WS message error:", e);
-    }
-  });
-
-  ws.on("close", () => {
-    if (userId) wsClients.delete(userId);
-  });
-});
-
-function sendToUser(userId, obj) {
-  const ws = wsClients.get(userId);
-  if (!ws) return;
-  try {
-    ws.send(JSON.stringify(obj));
-  } catch (e) {}
-}
-
-function broadcastToLobby(lobby, obj) {
-  const msg = JSON.stringify(obj);
-  lobby.players.forEach((p) => {
-    const ws = wsClients.get(p.id);
-    if (!ws) return;
-    try {
-      ws.send(msg);
-    } catch (e) {}
-  });
-}
-
-// ===== Lobby & games =====
-function handleJoinLobby(userId, mode, bet) {
-  const u = users.get(String(userId));
-  if (!u) {
-    sendToUser(userId, { type: "error", message: "Пользователь не найден" });
-    return;
-  }
-
-  const realBet = bet && bet > 0 ? bet : 1;
-  if (u.stars < realBet) {
-    sendToUser(userId, {
-      type: "error",
-      message: "Недостаточно звёзд для ставки",
-    });
-    return;
-  }
-
-  let lobby = Array.from(lobbies.values()).find(
-    (l) =>
-      l.mode === mode &&
-      l.bet === realBet &&
-      l.status === "waiting" &&
-      l.players.length < 2
+// ===== DB INIT =====
+db.serialize(() => {
+  db.run(
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY,
+      tg_id INTEGER UNIQUE,
+      username TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      avatar TEXT,
+      stars INTEGER DEFAULT 100
+    )`
   );
 
-  if (!lobby) {
-    lobby = {
-      id: nextLobbyId++,
-      mode,
-      bet: realBet,
-      players: [],
-      status: "waiting",
-    };
-    lobbies.set(lobby.id, lobby);
-  }
+  db.run(
+    `CREATE TABLE IF NOT EXISTS games (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mode TEXT,
+      bet INTEGER,
+      winner_id INTEGER,
+      created_at INTEGER
+    )`
+  );
 
-  if (lobby.players.some((p) => p.id === u.id)) {
-    sendToUser(userId, {
-      type: "error",
-      message: "Вы уже в этом лобби",
+  db.run(
+    `CREATE TABLE IF NOT EXISTS game_players (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      game_id INTEGER,
+      user_id INTEGER,
+      username TEXT,
+      avatar TEXT
+    )`
+  );
+
+  db.run(
+    `CREATE TABLE IF NOT EXISTS game_replays (
+      game_id INTEGER PRIMARY KEY,
+      replay_json TEXT
+    )`
+  );
+});
+
+// ===== HELPERS =====
+function getUserByTgId(tgId) {
+  return new Promise((resolve, reject) => {
+    db.get("SELECT * FROM users WHERE tg_id = ?", [tgId], (err, row) => {
+      if (err) return reject(err);
+      resolve(row || null);
     });
-    return;
-  }
-
-  lobby.players.push({
-    id: u.id,
-    username: u.username,
-    name: u.name,
-    avatar: u.avatar,
   });
-
-  broadcastToLobby(lobby, {
-    type: "lobby_state",
-    lobby: {
-      id: lobby.id,
-      mode: lobby.mode,
-      bet: lobby.bet,
-      players: lobby.players,
-      status: lobby.status,
-    },
-  });
-
-  if (lobby.players.length >= 2) {
-    startGameFromLobby(lobby);
-  }
 }
 
-function startGameFromLobby(lobby) {
-  lobby.status = "playing";
+function createUserFromInit(init) {
+  return new Promise((resolve, reject) => {
+    const u = init.user;
+    db.run(
+      `INSERT INTO users (tg_id, username, first_name, last_name, avatar, stars)
+       VALUES (?, ?, ?, ?, ?, 100)`,
+      [
+        u.id,
+        u.username || null,
+        u.first_name || null,
+        u.last_name || null,
+        u.photo_url || null,
+      ],
+      function (err) {
+        if (err) return reject(err);
+        db.get("SELECT * FROM users WHERE id = ?", [this.lastID], (e, row) => {
+          if (e) return reject(e);
+          resolve(row);
+        });
+      }
+    );
+  });
+}
 
-  const gameId = nextGameId++;
-  const mode = lobby.mode;
-  const bet = lobby.bet;
-  const players = lobby.players.map((p) => ({ ...p }));
+function updateUserFromInit(userId, init) {
+  return new Promise((resolve, reject) => {
+    const u = init.user;
+    db.run(
+      `UPDATE users
+       SET username = ?, first_name = ?, last_name = ?, avatar = ?
+       WHERE id = ?`,
+      [u.username || null, u.first_name || null, u.last_name || null, u.photo_url || null, userId],
+      (err) => {
+        if (err) return reject(err);
+        db.get("SELECT * FROM users WHERE id = ?", [userId], (e, row) => {
+          if (e) return reject(e);
+          resolve(row);
+        });
+      }
+    );
+  });
+}
 
-  players.forEach((p) => {
-    const u = users.get(String(p.id));
-    if (u) {
-      u.stars -= bet;
-      if (u.stars < 0) u.stars = 0;
+function changeStars(userId, delta) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE users SET stars = stars + ? WHERE id = ?`,
+      [delta, userId],
+      function (err) {
+        if (err) return reject(err);
+        db.get("SELECT * FROM users WHERE id = ?", [userId], (e, row) => {
+          if (e) return reject(e);
+          resolve(row);
+        });
+      }
+    );
+  });
+}
+
+function createGame(mode, bet, players, winnerId, replay) {
+  return new Promise((resolve, reject) => {
+    const now = Date.now();
+    db.run(
+      `INSERT INTO games (mode, bet, winner_id, created_at)
+       VALUES (?, ?, ?, ?)`,
+      [mode, bet, winnerId, now],
+      function (err) {
+        if (err) return reject(err);
+        const gameId = this.lastID;
+
+        const stmt = db.prepare(
+          `INSERT INTO game_players (game_id, user_id, username, avatar)
+           VALUES (?, ?, ?, ?)`
+        );
+        players.forEach((p) => {
+          stmt.run(gameId, p.id, p.username || null, p.avatar || null);
+        });
+        stmt.finalize();
+
+        db.run(
+          `INSERT INTO game_replays (game_id, replay_json)
+           VALUES (?, ?)`,
+          [gameId, JSON.stringify(replay || [])],
+          (e2) => {
+            if (e2) return reject(e2);
+            resolve({ id: gameId, mode, bet, winnerId, createdAt: now });
+          }
+        );
+      }
+    );
+  });
+}
+
+function getGameHistory({ mode, filter, userId }) {
+  return new Promise((resolve, reject) => {
+    let sql = `SELECT g.*, 
+      (SELECT json_group_array(json_object(
+        'id', gp.user_id,
+        'username', gp.username,
+        'avatar', gp.avatar
+      )) FROM game_players gp WHERE gp.game_id = g.id) AS players_json
+      FROM games g`;
+    const params = [];
+
+    if (filter === "mine" && userId) {
+      sql +=
+        " JOIN game_players gp2 ON gp2.game_id = g.id WHERE gp2.user_id = ?";
+      params.push(userId);
+    } else if (mode) {
+      sql += " WHERE g.mode = ?";
+      params.push(mode);
     }
+
+    sql += " ORDER BY g.id DESC LIMIT 50";
+
+    db.all(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      const games = rows.map((r) => ({
+        id: r.id,
+        mode: r.mode,
+        bet: r.bet,
+        winnerId: r.winner_id,
+        createdAt: r.created_at,
+        players: JSON.parse(r.players_json || "[]"),
+      }));
+      resolve(games);
+    });
   });
-
-  const replay = simulateGame(mode, players);
-  const winnerId = replay.winnerId;
-  const pot = bet * players.length;
-
-  const winnerUser = users.get(String(winnerId));
-  if (winnerUser) {
-    winnerUser.stars += pot;
-  }
-
-  const game = {
-    id: gameId,
-    mode,
-    bet,
-    players,
-    winnerId,
-    replay: replay.frames,
-    createdAt: Date.now(),
-  };
-  games.set(gameId, game);
-
-  broadcastToLobby(lobby, {
-    type: "game_result",
-    game: {
-      id: game.id,
-      mode: game.mode,
-      bet: game.bet,
-      players: game.players,
-      winnerId: game.winnerId,
-      createdAt: game.createdAt,
-    },
-  });
-
-  lobbies.delete(lobby.id);
 }
 
-// ===== Game physics =====
+function getGameReplay(gameId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT g.*, gr.replay_json,
+        (SELECT json_group_array(json_object(
+          'id', gp.user_id,
+          'username', gp.username,
+          'avatar', gp.avatar
+        )) FROM game_players gp WHERE gp.game_id = g.id) AS players_json
+       FROM games g
+       LEFT JOIN game_replays gr ON gr.game_id = g.id
+       WHERE g.id = ?`,
+      [gameId],
+      (err, row) => {
+        if (err) return reject(err);
+        if (!row) return resolve(null);
+        resolve({
+          id: row.id,
+          mode: row.mode,
+          bet: row.bet,
+          winnerId: row.winner_id,
+          createdAt: row.created_at,
+          players: JSON.parse(row.players_json || "[]"),
+          replay: row.replay_json ? JSON.parse(row.replay_json) : [],
+        });
+      }
+    );
+  });
+}
 
-function simulateGame(mode, players) {
+// ===== SIMPLE GAME PHYSICS (РЕПЛЕЙ) =====
+
+function simulateGame(mode, players, bet) {
+  // Все режимы — одна схема: 2–4 шарика, двигаются по полю 0–100
   const frames = [];
-
-  // общие параметры арены
-  const width = 100;
-  const height = 100;
-  const radius = 4;
-  const dt = 0.1;
-  const maxTicks = 300;
-
-  const state = players.map((p, idx) => {
-    const angle = (2 * Math.PI * idx) / players.length;
-    return {
-      id: p.id,
-      username: p.username || String(p.id),
-      x: 50 + Math.cos(angle) * 20,
-      y: 50 + Math.sin(angle) * 20,
-      vx: 0,
-      vy: 0,
+  const ids = players.map((p) => p.id);
+  const positions = {};
+  ids.forEach((id, idx) => {
+    positions[id] = {
+      x: 10 + idx * 20,
+      y: 10 + idx * 10,
       alive: true,
-      score: 0,
-      colorCells: 0,
     };
   });
 
-  function pushFrame() {
-    frames.push(
-      state.map((s) => ({
-        id: s.id,
-        x: s.x,
-        y: s.y,
-        alive: s.alive,
-      }))
-    );
-  }
-
-  function applyBorders(s) {
-    if (!s.alive) return;
-    if (mode === "elimination") {
-      // вылет за круг
-      const dx = s.x - 50;
-      const dy = s.y - 50;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 45) {
-        s.alive = false;
+  const steps = 60;
+  for (let t = 0; t < steps; t++) {
+    const frame = [];
+    ids.forEach((id) => {
+      const p = positions[id];
+      if (!p.alive) {
+        frame.push({ id, x: p.x, y: p.y, alive: false });
+        return;
       }
-    } else {
-      // прямоугольная арена
-      if (s.x < radius) {
-        s.x = radius;
-        s.vx = -s.vx * 0.6;
-      }
-      if (s.x > width - radius) {
-        s.x = width - radius;
-        s.vx = -s.vx * 0.6;
-      }
-      if (s.y < radius) {
-        s.y = radius;
-        s.vy = -s.vy * 0.6;
-      }
-      if (s.y > height - radius) {
-        s.y = height - radius;
-        s.vy = -s.vy * 0.6;
-      }
-    }
-  }
-
-  function applyCollisions() {
-    for (let i = 0; i < state.length; i++) {
-      for (let j = i + 1; j < state.length; j++) {
-        const a = state[i];
-        const b = state[j];
-        if (!a.alive || !b.alive) continue;
-
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const minDist = radius * 2;
-
-        if (dist > 0 && dist < minDist) {
-          const nx = dx / dist;
-          const ny = dy / dist;
-          const overlap = minDist - dist;
-
-          a.x -= nx * (overlap / 2);
-          a.y -= ny * (overlap / 2);
-          b.x += nx * (overlap / 2);
-          b.y += ny * (overlap / 2);
-
-          const av = a.vx * nx + a.vy * ny;
-          const bv = b.vx * nx + b.vy * ny;
-          const p = (2 * (av - bv)) / 2;
-
-          a.vx -= p * nx * 0.8;
-          a.vy -= p * ny * 0.8;
-          b.vx += p * nx * 0.8;
-          b.vy += p * ny * 0.8;
-        }
-      }
-    }
-  }
-
-  function applyModeForces(tick) {
-    state.forEach((s, idx) => {
-      if (!s.alive) return;
-
-      const seedBase = mode + ":" + s.username + ":" + tick;
+      let dx = (Math.random() - 0.5) * 8;
+      let dy = (Math.random() - 0.5) * 8;
 
       if (mode === "ice_arena") {
-        const angle =
-          rand01(seedBase + ":angle") * 2 * Math.PI;
-        const force = 8;
-        s.vx += Math.cos(angle) * force * dt;
-        s.vy += Math.sin(angle) * force * dt;
-        s.vx *= 0.98;
-        s.vy *= 0.98;
+        dx *= 0.7;
+        dy *= 0.7;
       } else if (mode === "elimination") {
-        const dx = s.x - 50;
-        const dy = s.y - 50;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const push = 10;
-        s.vx += nx * push * dt;
-        s.vy += ny * push * dt;
-        s.vx *= 0.99;
-        s.vy *= 0.99;
-      } else if (mode === "ball_race") {
-        const targetX = 90;
-        const targetY = 50 + (idx - (state.length - 1) / 2) * 10;
-        const dx = targetX - s.x;
-        const dy = targetY - s.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const nx = dx / dist;
-        const ny = dy / dist;
-        const accel = 15;
-        s.vx += nx * accel * dt;
-        s.vy += ny * accel * dt;
-        s.vx *= 0.97;
-        s.vy *= 0.97;
+        dy += 1;
       } else if (mode === "color_arena") {
-        const angle =
-          rand01(seedBase + ":angle") * 2 * Math.PI;
-        const force = 10;
-        s.vx += Math.cos(angle) * force * dt;
-        s.vy += Math.sin(angle) * force * dt;
-        s.vx *= 0.96;
-        s.vy *= 0.96;
-      } else if (mode === "mix") {
-        const phase = tick % 4;
-        if (phase === 0) {
-          const angle =
-            rand01(seedBase + ":angle") * 2 * Math.PI;
-          const force = 8;
-          s.vx += Math.cos(angle) * force * dt;
-          s.vy += Math.sin(angle) * force * dt;
-        } else if (phase === 1) {
-          const dx = s.x - 50;
-          const dy = s.y - 50;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          const push = 10;
-          s.vx += nx * push * dt;
-          s.vy += ny * push * dt;
-        } else if (phase === 2) {
-          const targetX = 90;
-          const targetY = 50 + (idx - (state.length - 1) / 2) * 10;
-          const dx = targetX - s.x;
-          const dy = targetY - s.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const nx = dx / dist;
-          const ny = dy / dist;
-          const accel = 15;
-          s.vx += nx * accel * dt;
-          s.vy += ny * accel * dt;
-        } else if (phase === 3) {
-          const angle =
-            rand01(seedBase + ":angle") * 2 * Math.PI;
-          const force = 10;
-          s.vx += Math.cos(angle) * force * dt;
-          s.vy += Math.sin(angle) * force * dt;
-        }
-        s.vx *= 0.97;
-        s.vy *= 0.97;
+        dx *= 1.2;
+        dy *= 1.2;
+      } else if (mode === "ball_race") {
+        dy += 2;
       }
+
+      p.x = Math.max(0, Math.min(100, p.x + dx));
+      p.y = Math.max(0, Math.min(100, p.y + dy));
+
+      if (mode === "elimination" && p.y > 95 && Math.random() < 0.1) {
+        p.alive = false;
+      }
+
+      frame.push({ id, x: p.x, y: p.y, alive: p.alive });
     });
+    frames.push(frame);
   }
 
-  // простая сетка для color_arena
-  const gridSize = 10;
-  const grid = {};
-  function colorCell(s) {
-    if (mode !== "color_arena" && mode !== "mix") return;
-    const gx = Math.floor(s.x / gridSize);
-    const gy = Math.floor(s.y / gridSize);
-    const key = gx + ":" + gy;
-    if (!grid[key]) {
-      grid[key] = s.id;
-      s.colorCells++;
-    }
-  }
-
-  let winnerId = null;
-
-  for (let tick = 0; tick < maxTicks; tick++) {
-    const aliveCount = state.filter((s) => s.alive).length;
-    if (aliveCount <= 1) {
-      const alive = state.find((s) => s.alive);
-      winnerId = alive ? alive.id : state[0].id;
-      break;
-    }
-
-    applyModeForces(tick);
-
-    state.forEach((s) => {
-      if (!s.alive) return;
-      s.x += s.vx * dt;
-      s.y += s.vy * dt;
-      applyBorders(s);
-      colorCell(s);
-    });
-
-    applyCollisions();
-    pushFrame();
-  }
-
-  if (!winnerId) {
-    if (mode === "color_arena") {
-      state.sort((a, b) => b.colorCells - a.colorCells);
-      winnerId = state[0].id;
-    } else if (mode === "ball_race") {
-      state.sort((a, b) => b.x - a.x);
-      winnerId = state[0].id;
-    } else {
-      state.sort((a, b) => b.x - a.x);
-      winnerId = state[0].id;
-    }
-  }
+  let aliveIds = ids.filter((id) => positions[id].alive);
+  if (aliveIds.length === 0) aliveIds = ids;
+  const winnerId = aliveIds[Math.floor(Math.random() * aliveIds.length)];
 
   return { winnerId, frames };
 }
 
-// ===== History =====
-function luckScore(game) {
-  const winner = game.players.find((p) => p.id === game.winnerId);
-  if (!winner) return 0;
-  const u = users.get(String(winner.id));
-  if (!u) return 0;
-  return 1000000 - u.stars;
+// ===== LOBBIES =====
+
+const modes = ["ice_arena", "elimination", "ball_race", "color_arena"];
+const lobbies = {};
+modes.forEach((m) => {
+  lobbies[m] = {
+    mode: m,
+    bet: null,
+    players: [],
+    status: "waiting",
+  };
+});
+
+const wsClients = new Set();
+
+function broadcastLobbyState(mode) {
+  const lobby = lobbies[mode];
+  const payload = JSON.stringify({
+    type: "lobby_state",
+    lobby: {
+      mode: lobby.mode,
+      bet: lobby.bet || 0,
+      status: lobby.status,
+      players: lobby.players.map((p) => ({
+        id: p.id,
+        username: p.username,
+        name: p.first_name || p.username || "Игрок",
+        avatar: p.avatar,
+      })),
+    },
+  });
+
+  wsClients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN && client.user) {
+      client.send(payload);
+    }
+  });
 }
 
-// ===== HTTP API =====
+async function startGameForLobby(mode) {
+  const lobby = lobbies[mode];
+  if (lobby.status !== "waiting") return;
+  if (lobby.players.length < 2) return;
 
-// профиль
-app.post("/api/me", (req, res) => {
-  const initDataUnsafe = req.body.initDataUnsafe;
-  const u = ensureUser(initDataUnsafe);
-  if (!u) return res.json({ ok: false });
+  lobby.status = "running";
+  broadcastLobbyState(mode);
 
-  res.json({
-    ok: true,
-    user: {
-      id: u.id,
-      username: u.username,
-      name: u.name,
-      avatar: u.avatar,
-      stars: u.stars,
-    },
-  });
-});
+  const players = lobby.players;
 
-// история игр
-app.get("/api/history", (req, res) => {
-  const mode = req.query.mode || null;
-  const filter = req.query.filter || "latest";
-  const userId = req.query.userId || null;
-
-  let list = Array.from(games.values());
-
-  if (mode) list = list.filter((g) => g.mode === mode);
-  if (filter === "mine" && userId) {
-    list = list.filter((g) =>
-      g.players.some((p) => String(p.id) === String(userId))
-    );
+  // списываем ставки
+  for (const u of players) {
+    await changeStars(u.db_id, -lobby.bet);
   }
 
-  if (filter === "biggest") {
-    list.sort(
-      (a, b) => b.bet * b.players.length - a.bet * a.players.length
-    );
-  } else if (filter === "lucky") {
-    list.sort((a, b) => luckScore(b) - luckScore(a));
-  } else {
-    list.sort((a, b) => b.createdAt - a.createdAt);
+  const sim = simulateGame(mode, players, lobby.bet);
+  const winner = players.find((p) => p.id === sim.winnerId);
+
+  if (winner) {
+    const pot = lobby.bet * players.length;
+    await changeStars(winner.db_id, pot);
   }
 
-  list = list.slice(0, 100);
-
-  res.json({
-    ok: true,
-    games: list.map((g) => ({
-      id: g.id,
-      mode: g.mode,
-      bet: g.bet,
-      players: g.players,
-      winnerId: g.winnerId,
-      createdAt: g.createdAt,
+  const gameRow = await createGame(
+    mode,
+    lobby.bet,
+    players.map((p) => ({
+      id: p.db_id,
+      username: p.username,
+      avatar: p.avatar,
     })),
-  });
-});
+    winner ? winner.db_id : null,
+    sim.frames
+  );
 
-// реплей
-app.get("/api/games/replay/:id", (req, res) => {
-  const id = Number(req.params.id);
-  const g = games.get(id);
-  if (!g) return res.json({ ok: false });
-
-  res.json({
-    ok: true,
+  const payload = JSON.stringify({
+    type: "game_result",
     game: {
-      id: g.id,
-      mode: g.mode,
-      bet: g.bet,
-      players: g.players,
-      winnerId: g.winnerId,
-      replay: g.replay,
-      createdAt: g.createdAt,
+      id: gameRow.id,
+      mode,
+      bet: lobby.bet,
+      winnerId: winner ? winner.db_id : null,
+      players: players.map((p) => ({
+        id: p.db_id,
+        username: p.username,
+        avatar: p.avatar,
+      })),
+      replay: sim.frames,
     },
   });
+
+  wsClients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN && client.user) {
+      const inGame = players.some((p) => p.id === client.user.tg_id);
+      if (inGame) client.send(payload);
+    }
+  });
+
+  lobby.players = [];
+  lobby.status = "waiting";
+  broadcastLobbyState(mode);
+}
+
+// ===== API =====
+
+// /api/me — авторизация + 100 звёзд по умолчанию
+app.post("/api/me", async (req, res) => {
+  try {
+    const init = req.body.initDataUnsafe;
+    if (!init || !init.user || !init.user.id) {
+      return res.json({ ok: false, error: "no_user" });
+    }
+    let user = await getUserByTgId(init.user.id);
+    if (!user) {
+      user = await createUserFromInit(init);
+    } else {
+      user = await updateUserFromInit(user.id, init);
+      if (user.stars < 100) {
+        user = await changeStars(user.id, 100 - user.stars);
+      }
+    }
+    res.json({
+      ok: true,
+      user: {
+        id: user.id,
+        tg_id: user.tg_id,
+        username: user.username,
+        name: user.first_name || user.username || "Игрок",
+        avatar: user.avatar,
+        stars: user.stars,
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    res.json({ ok: false, error: "server_error" });
+  }
 });
 
-// админ: звёзды по username
+// История игр
+app.get("/api/history", async (req, res) => {
+  try {
+    const mode = req.query.mode || null;
+    const filter = req.query.filter || "latest";
+    const userId = req.query.userId ? Number(req.query.userId) : null;
+    const games = await getGameHistory({ mode, filter, userId });
+    res.json({ ok: true, games });
+  } catch (e) {
+    console.error(e);
+    res.json({ ok: false, error: "server_error" });
+  }
+});
+
+// Реплей
+app.get("/api/games/replay/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const game = await getGameReplay(id);
+    if (!game) return res.json({ ok: false, error: "not_found" });
+    res.json({ ok: true, game });
+  } catch (e) {
+    console.error(e);
+    res.json({ ok: false, error: "server_error" });
+  }
+});
+
+// Админ — выдать звёзды по username
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
-  if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
-    return res.json({ ok: false, error: "bad_secret" });
+  if (adminSecret !== ADMIN_SECRET) {
+    return res.json({ ok: false, error: "forbidden" });
   }
   if (!username || !amount) {
     return res.json({ ok: false, error: "bad_params" });
   }
 
-  const u = Array.from(users.values()).find(
-    (u) => u.username && u.username.toLowerCase() === username.toLowerCase()
-  );
-  if (!u) {
-    return res.json({ ok: false, error: "user_not_found" });
-  }
-
-  u.stars += Number(amount);
-  if (u.stars < 0) u.stars = 0;
-
-  res.json({
-    ok: true,
-    user: {
-      id: u.id,
-      username: u.username,
-      name: u.name,
-      avatar: u.avatar,
-      stars: u.stars,
-    },
-  });
-});
-
-// рассылка всем
-app.post("/api/admin/broadcast", async (req, res) => {
-  const { adminSecret, text } = req.body;
-
-  if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
-    return res.json({ ok: false, error: "bad_secret" });
-  }
-
-  if (!text || text.length < 1) {
-    return res.json({ ok: false, error: "empty_text" });
-  }
-
-  let sent = 0;
-
-  for (const u of users.values()) {
-    const chatId = u.id;
-    try {
-      await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: text,
-        }),
-      });
-      sent++;
-    } catch (e) {
-      console.log("Ошибка отправки пользователю", chatId);
+  db.get(
+    "SELECT * FROM users WHERE username = ?",
+    [username],
+    async (err, row) => {
+      if (err) {
+        console.error(err);
+        return res.json({ ok: false, error: "db_error" });
+      }
+      if (!row) {
+        return res.json({ ok: false, error: "user_not_found" });
+      }
+      try {
+        const updated = await changeStars(row.id, Number(amount));
+        res.json({
+          ok: true,
+          user: {
+            id: updated.id,
+            username: updated.username,
+            stars: updated.stars,
+          },
+        });
+      } catch (e) {
+        console.error(e);
+        res.json({ ok: false, error: "server_error" });
+      }
     }
-  }
-
-  res.json({ ok: true, sent });
+  );
 });
 
-// турниры
-app.post("/api/tournaments", (req, res) => {
-  const { adminSecret, name, modes, gameNumber, durationMinutes } = req.body;
-  if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
-    return res.json({ ok: false, error: "bad_secret" });
+// Админ — рассылка всем
+app.post("/api/admin/broadcast", (req, res) => {
+  const { adminSecret, text } = req.body;
+  if (adminSecret !== ADMIN_SECRET) {
+    return res.json({ ok: false, error: "forbidden" });
   }
-  const t = {
-    id: nextTournamentId++,
-    name: name || "Турнир",
-    modes: Array.isArray(modes) ? modes : [],
-    gameNumber: Number(gameNumber) || 0,
-    durationMinutes: Number(durationMinutes) || 0,
-    createdAt: Date.now(),
-  };
-  tournaments.set(t.id, t);
-  res.json({ ok: true, tournament: t });
-});
+  if (!text) return res.json({ ok: false, error: "no_text" });
 
-app.get("/api/tournaments", (req, res) => {
-  res.json({
-    ok: true,
-    tournaments: Array.from(tournaments.values()),
+  db.all("SELECT tg_id FROM users", async (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.json({ ok: false, error: "db_error" });
+    }
+    let sent = 0;
+    for (const r of rows) {
+      try {
+        if (!BOT_TOKEN || BOT_TOKEN === "YOUR_BOT_TOKEN") {
+          console.log("Broadcast to", r.tg_id, ":", text);
+          sent++;
+        } else {
+          await fetch(
+            `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chat_id: r.tg_id,
+                text,
+              }),
+            }
+          );
+          sent++;
+        }
+      } catch (e) {
+        console.error("broadcast error", e);
+      }
+    }
+    res.json({ ok: true, sent });
   });
 });
 
-// особая игра
-app.post("/api/special-game", (req, res) => {
-  const { adminSecret, gameNumber, durationMinutes } = req.body;
-  if (adminSecret !== process.env.ADMIN_SECRET && adminSecret !== "dev_secret") {
-    return res.json({ ok: false, error: "bad_secret" });
+// ===== TOURNAMENTS (простая заглушка) =====
+
+let currentTournament = null;
+
+app.get("/api/tournament", (req, res) => {
+  if (!currentTournament) {
+    return res.json({ ok: true, tournament: null });
   }
-  const s = {
-    id: nextSpecialId++,
-    gameNumber: Number(gameNumber) || 0,
-    durationMinutes: Number(durationMinutes) || 0,
-    createdAt: Date.now(),
-  };
-  specialGames.set(s.id, s);
-  res.json({ ok: true, special: s });
+  res.json({ ok: true, tournament: currentTournament });
 });
 
-app.get("/api/special-game", (req, res) => {
-  res.json({
-    ok: true,
-    specials: Array.from(specialGames.values()),
+app.post("/api/admin/tournament", (req, res) => {
+  const { adminSecret, mode, bet, prize } = req.body;
+  if (adminSecret !== ADMIN_SECRET) {
+    return res.json({ ok: false, error: "forbidden" });
+  }
+  currentTournament = {
+    id: Date.now(),
+    mode: mode || "ice_arena",
+    bet: bet || 50,
+    prize: prize || 1000,
+    status: "waiting",
+  };
+  res.json({ ok: true, tournament: currentTournament });
+});
+
+// ===== WS =====
+
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+wss.on("connection", (ws) => {
+  ws.user = null;
+  wsClients.add(ws);
+
+  ws.on("message", async (msg) => {
+    let data;
+    try {
+      data = JSON.parse(msg.toString());
+    } catch {
+      return;
+    }
+
+    if (data.type === "auth") {
+      const init = data.initDataUnsafe;
+      if (!init || !init.user || !init.user.id) return;
+      let user = await getUserByTgId(init.user.id);
+      if (!user) {
+        user = await createUserFromInit(init);
+      } else {
+        user = await updateUserFromInit(user.id, init);
+      }
+      ws.user = {
+        tg_id: user.tg_id,
+        db_id: user.id,
+        username: user.username,
+        first_name: user.first_name,
+        avatar: user.avatar,
+      };
+      modes.forEach((m) => broadcastLobbyState(m));
+      return;
+    }
+
+    if (!ws.user) return;
+
+    if (data.type === "join_lobby") {
+      const mode = data.mode;
+      const bet = Number(data.bet || 0);
+      if (!modes.includes(mode) || bet <= 0) {
+        ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "Неверный режим или ставка",
+          })
+        );
+        return;
+      }
+
+      const lobby = lobbies[mode];
+      lobby.bet = bet;
+
+      if (!lobby.players.find((p) => p.tg_id === ws.user.tg_id)) {
+        lobby.players.push({
+          id: ws.user.tg_id,
+          db_id: ws.user.db_id,
+          username: ws.user.username,
+          first_name: ws.user.first_name,
+          avatar: ws.user.avatar,
+        });
+      }
+
+      broadcastLobbyState(mode);
+
+      if (lobby.players.length >= 2) {
+        startGameForLobby(mode);
+      }
+    }
+  });
+
+  ws.on("close", () => {
+    wsClients.delete(ws);
   });
 });
 
-// ===== Start =====
 server.listen(PORT, () => {
-  console.log("Server listening on port", PORT);
+  console.log("Server started on", PORT);
 });
+
 
 
 
