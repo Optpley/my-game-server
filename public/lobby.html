@@ -20,6 +20,13 @@
 
   <div id="lobby-status" class="lobby-status">Ожидание игроков...</div>
 
+  <!-- АРЕНА СРАЗУ В ЛОББИ -->
+  <div id="arena" class="replay-canvas" style="height:260px;margin-bottom:10px;">
+    <div class="replay-header">
+      <div id="arenaTitle">Арена</div>
+    </div>
+  </div>
+
   <div id="lobby-players-list" class="lobby-players-list"></div>
 
   <div class="lobby-bets">
@@ -63,17 +70,9 @@
   </div>
 </div>
 
-<div id="replayOverlay" class="replay-overlay">
-  <div class="replay-canvas" id="replayCanvas">
-    <div class="replay-header">
-      <div id="replayTitle">Повтор</div>
-      <button id="replayClose" class="replay-close-btn">✕</button>
-    </div>
-  </div>
-</div>
-
 <div id="alert" class="alert"></div>
 
 <script src="lobby.js"></script>
 </body>
 </html>
+
