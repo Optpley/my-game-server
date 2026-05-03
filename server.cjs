@@ -1,10 +1,12 @@
-// server.cjs — PART 1/2
+// ======================= IMPORTS =======================
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
-const fetch = require("node-fetch");
+
+// Node 18+ имеет встроенный fetch
+const fetchFn = (...args) => fetch(...args);
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN";
 const ADMIN_SECRET = "dev_secret";
@@ -16,7 +18,8 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const db = new sqlite3.Database(path.join(__dirname, "db.sqlite"));
 
-// ===== DB INIT =====
+
+// ======================= DB INIT =======================
 db.serialize(() => {
   db.run(
     `CREATE TABLE IF NOT EXISTS users (
@@ -58,7 +61,8 @@ db.serialize(() => {
   );
 });
 
-// ===== HELPERS =====
+
+// ======================= HELPERS =======================
 function getUserByTgId(tgId) {
   return new Promise((resolve, reject) => {
     db.get("SELECT * FROM users WHERE tg_id = ?", [tgId], (err, row) => {
@@ -99,7 +103,7 @@ function updateUserFromInit(userId, init) {
       `UPDATE users
        SET username = ?, first_name = ?, last_name = ?, avatar = ?
        WHERE id = ?`,
-      [u.username || null, u.first_name || null, u.last_name || null, u.photo_url || null, userId],
+      [u.username, u.first_name, u.last_name, u.photo_url, userId],
       (err) => {
         if (err) return reject(err);
         db.get("SELECT * FROM users WHERE id = ?", [userId], (e, row) => {
@@ -143,14 +147,14 @@ function createGame(mode, bet, players, winnerId, replay) {
            VALUES (?, ?, ?, ?)`
         );
         players.forEach((p) => {
-          stmt.run(gameId, p.id, p.username || null, p.avatar || null);
+          stmt.run(gameId, p.id, p.username, p.avatar);
         });
         stmt.finalize();
 
         db.run(
           `INSERT INTO game_replays (game_id, replay_json)
            VALUES (?, ?)`,
-          [gameId, JSON.stringify(replay || [])],
+          [gameId, JSON.stringify(replay)],
           (e2) => {
             if (e2) return reject(e2);
             resolve({ id: gameId, mode, bet, winnerId, createdAt: now });
@@ -160,26 +164,22 @@ function createGame(mode, bet, players, winnerId, replay) {
     );
   });
 }
-// ===== SIMPLE GAME PHYSICS (REPLAY) =====
 
+
+// ======================= GAME SIMULATION =======================
 function simulateGame(mode, players, bet) {
   const frames = [];
   const ids = players.map((p) => p.id);
-  const positions = {};
+  const pos = {};
 
-  ids.forEach((id, idx) => {
-    positions[id] = {
-      x: 10 + idx * 20,
-      y: 10 + idx * 10,
-      alive: true,
-    };
+  ids.forEach((id, i) => {
+    pos[id] = { x: 20 + i * 20, y: 20 + i * 10, alive: true };
   });
 
-  const steps = 60;
-  for (let t = 0; t < steps; t++) {
+  for (let t = 0; t < 60; t++) {
     const frame = [];
     ids.forEach((id) => {
-      const p = positions[id];
+      const p = pos[id];
       if (!p.alive) {
         frame.push({ id, x: p.x, y: p.y, alive: false });
         return;
@@ -191,38 +191,39 @@ function simulateGame(mode, players, bet) {
       if (mode === "ice_arena") {
         dx *= 0.7;
         dy *= 0.7;
-      } else if (mode === "elimination") {
+      }
+      if (mode === "elimination") {
         dy += 1;
-      } else if (mode === "color_arena") {
+        if (p.y > 95 && Math.random() < 0.1) p.alive = false;
+      }
+      if (mode === "color_arena") {
         dx *= 1.2;
         dy *= 1.2;
-      } else if (mode === "ball_race") {
+      }
+      if (mode === "ball_race") {
         dy += 2;
       }
 
       p.x = Math.max(0, Math.min(100, p.x + dx));
       p.y = Math.max(0, Math.min(100, p.y + dy));
 
-      if (mode === "elimination" && p.y > 95 && Math.random() < 0.1) {
-        p.alive = false;
-      }
-
       frame.push({ id, x: p.x, y: p.y, alive: p.alive });
     });
+
     frames.push(frame);
   }
 
-  let aliveIds = ids.filter((id) => positions[id].alive);
-  if (aliveIds.length === 0) aliveIds = ids;
-  const winnerId = aliveIds[Math.floor(Math.random() * aliveIds.length)];
+  const alive = ids.filter((id) => pos[id].alive);
+  const winnerId = alive.length ? alive[Math.floor(Math.random() * alive.length)] : ids[0];
 
   return { winnerId, frames };
 }
 
-// ===== LOBBIES =====
 
+// ======================= LOBBIES =======================
 const modes = ["ice_arena", "elimination", "ball_race", "color_arena"];
 const lobbies = {};
+
 modes.forEach((m) => {
   lobbies[m] = {
     mode: m,
@@ -245,16 +246,14 @@ function broadcastLobbyState(mode) {
       players: lobby.players.map((p) => ({
         id: p.id,
         username: p.username,
-        name: p.first_name || p.username || "Игрок",
+        name: p.first_name || p.username,
         avatar: p.avatar,
       })),
     },
   });
 
-  wsClients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN && client.user) {
-      client.send(payload);
-    }
+  wsClients.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
   });
 }
 
@@ -308,11 +307,8 @@ async function startGameForLobby(mode) {
     },
   });
 
-  wsClients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN && client.user) {
-      const inGame = players.some((p) => p.id === client.user.tg_id);
-      if (inGame) client.send(payload);
-    }
+  wsClients.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
   });
 
   lobby.players = [];
@@ -320,98 +316,140 @@ async function startGameForLobby(mode) {
   broadcastLobbyState(mode);
 }
 
-// ===== API =====
+
+// ======================= API =======================
 
 // /api/me
 app.post("/api/me", async (req, res) => {
   try {
     const init = req.body.initDataUnsafe;
-    if (!init || !init.user || !init.user.id) {
-      return res.json({ ok: false, error: "no_user" });
-    }
+    if (!init || !init.user) return res.json({ ok: false });
+
     let user = await getUserByTgId(init.user.id);
-    if (!user) {
-      user = await createUserFromInit(init);
-    } else {
-      user = await updateUserFromInit(user.id, init);
-      if (user.stars < 100) {
-        user = await changeStars(user.id, 100 - user.stars);
-      }
-    }
+    if (!user) user = await createUserFromInit(init);
+    else user = await updateUserFromInit(user.id, init);
+
+    if (user.stars < 100) user = await changeStars(user.id, 100 - user.stars);
+
     res.json({
       ok: true,
       user: {
         id: user.id,
         tg_id: user.tg_id,
         username: user.username,
-        name: user.first_name || user.username || "Игрок",
+        name: user.first_name || user.username,
         avatar: user.avatar,
         stars: user.stars,
       },
     });
-  } catch (e) {
-    console.error(e);
-    res.json({ ok: false, error: "server_error" });
+  } catch {
+    res.json({ ok: false });
   }
 });
 
 // История
-app.get("/api/history", async (req, res) => {
-  try {
-    const mode = req.query.mode || null;
-    const filter = req.query.filter || "latest";
-    const userId = req.query.userId ? Number(req.query.userId) : null;
-    const games = await getGameHistory({ mode, filter, userId });
-    res.json({ ok: true, games });
-  } catch (e) {
-    console.error(e);
-    res.json({ ok: false, error: "server_error" });
+app.get("/api/history", (req, res) => {
+  const mode = req.query.mode;
+  const filter = req.query.filter || "latest";
+  const userId = req.query.userId;
+
+  let sql = `
+    SELECT g.*, 
+      (SELECT json_group_array(json_object(
+        'id', gp.user_id,
+        'username', gp.username,
+        'avatar', gp.avatar
+      )) FROM game_players gp WHERE gp.game_id = g.id) AS players_json
+    FROM games g
+  `;
+
+  const params = [];
+
+  if (filter === "mine" && userId) {
+    sql += " JOIN game_players gp2 ON gp2.game_id = g.id WHERE gp2.user_id = ?";
+    params.push(userId);
+  } else if (mode) {
+    sql += " WHERE g.mode = ?";
+    params.push(mode);
   }
+
+  sql += " ORDER BY g.id DESC LIMIT 50";
+
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.json({ ok: false });
+
+    const games = rows.map((r) => ({
+      id: r.id,
+      mode: r.mode,
+      bet: r.bet,
+      winnerId: r.winner_id,
+      createdAt: r.created_at,
+      players: JSON.parse(r.players_json || "[]"),
+    }));
+
+    res.json({ ok: true, games });
+  });
 });
 
 // Реплей
-app.get("/api/games/replay/:id", async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const game = await getGameReplay(id);
-    if (!game) return res.json({ ok: false, error: "not_found" });
-    res.json({ ok: true, game });
-  } catch (e) {
-    console.error(e);
-    res.json({ ok: false, error: "server_error" });
-  }
+app.get("/api/games/replay/:id", (req, res) => {
+  const id = Number(req.params.id);
+
+  db.get(
+    `
+    SELECT g.*, gr.replay_json,
+      (SELECT json_group_array(json_object(
+        'id', gp.user_id,
+        'username', gp.username,
+        'avatar', gp.avatar
+      )) FROM game_players gp WHERE gp.game_id = g.id) AS players_json
+    FROM games g
+    LEFT JOIN game_replays gr ON gr.game_id = g.id
+    WHERE g.id = ?
+  `,
+    [id],
+    (err, row) => {
+      if (err || !row) return res.json({ ok: false });
+
+      res.json({
+        ok: true,
+        game: {
+          id: row.id,
+          mode: row.mode,
+          bet: row.bet,
+          winnerId: row.winner_id,
+          createdAt: row.created_at,
+          players: JSON.parse(row.players_json || "[]"),
+          replay: row.replay_json ? JSON.parse(row.replay_json) : [],
+        },
+      });
+    }
+  );
 });
 
 // Админ — звёзды
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
-  if (adminSecret !== ADMIN_SECRET) {
+
+  if (adminSecret !== ADMIN_SECRET)
     return res.json({ ok: false, error: "forbidden" });
-  }
-  if (!username || !amount) {
-    return res.json({ ok: false, error: "bad_params" });
-  }
 
   db.get(
     "SELECT * FROM users WHERE username = ?",
     [username],
     async (err, row) => {
-      if (err) return res.json({ ok: false, error: "db_error" });
-      if (!row) return res.json({ ok: false, error: "user_not_found" });
+      if (err || !row) return res.json({ ok: false, error: "user_not_found" });
 
-      try {
-        const updated = await changeStars(row.id, Number(amount));
-        res.json({
-          ok: true,
-          user: {
-            id: updated.id,
-            username: updated.username,
-            stars: updated.stars,
-          },
-        });
-      } catch (e) {
-        res.json({ ok: false, error: "server_error" });
-      }
+      const updated = await changeStars(row.id, Number(amount));
+
+      res.json({
+        ok: true,
+        user: {
+          id: updated.id,
+          username: updated.username,
+          stars: updated.stars,
+        },
+      });
     }
   );
 });
@@ -419,22 +457,25 @@ app.post("/api/admin/give-stars", (req, res) => {
 // Админ — рассылка
 app.post("/api/admin/broadcast", (req, res) => {
   const { adminSecret, text } = req.body;
-  if (adminSecret !== ADMIN_SECRET) {
+
+  if (adminSecret !== ADMIN_SECRET)
     return res.json({ ok: false, error: "forbidden" });
-  }
-  if (!text) return res.json({ ok: false, error: "no_text" });
+
+  if (!text || !text.trim())
+    return res.json({ ok: false, error: "no_text" });
 
   db.all("SELECT tg_id FROM users", async (err, rows) => {
-    if (err) return res.json({ ok: false, error: "db_error" });
+    if (err) return res.json({ ok: false });
 
     let sent = 0;
+
     for (const r of rows) {
       try {
         if (!BOT_TOKEN || BOT_TOKEN === "YOUR_BOT_TOKEN") {
           console.log("Broadcast to", r.tg_id, ":", text);
           sent++;
         } else {
-          await fetch(
+          await fetchFn(
             `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
             {
               method: "POST",
@@ -449,12 +490,13 @@ app.post("/api/admin/broadcast", (req, res) => {
         }
       } catch {}
     }
+
     res.json({ ok: true, sent });
   });
 });
 
-// ===== TOURNAMENTS =====
 
+// ======================= TOURNAMENTS =======================
 let currentTournament = null;
 
 app.get("/api/tournament", (req, res) => {
@@ -463,9 +505,10 @@ app.get("/api/tournament", (req, res) => {
 
 app.post("/api/admin/tournament", (req, res) => {
   const { adminSecret, mode, bet, prize } = req.body;
-  if (adminSecret !== ADMIN_SECRET) {
+
+  if (adminSecret !== ADMIN_SECRET)
     return res.json({ ok: false, error: "forbidden" });
-  }
+
   currentTournament = {
     id: Date.now(),
     mode: mode || "ice_arena",
@@ -473,11 +516,12 @@ app.post("/api/admin/tournament", (req, res) => {
     prize: prize || 1000,
     status: "waiting",
   };
+
   res.json({ ok: true, tournament: currentTournament });
 });
 
-// ===== WS =====
 
+// ======================= WEBSOCKET =======================
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
@@ -495,7 +539,7 @@ wss.on("connection", (ws) => {
 
     if (data.type === "auth") {
       const init = data.initDataUnsafe;
-      if (!init || !init.user || !init.user.id) return;
+      if (!init || !init.user) return;
 
       let user = await getUserByTgId(init.user.id);
       if (!user) user = await createUserFromInit(init);
@@ -517,21 +561,17 @@ wss.on("connection", (ws) => {
 
     if (data.type === "join_lobby") {
       const mode = data.mode;
-      const bet = Number(data.bet || 0);
+      const bet = Number(data.bet);
+
       if (!modes.includes(mode) || bet <= 0) {
-        ws.send(
-          JSON.stringify({
-            type: "error",
-            message: "Неверный режим или ставка",
-          })
-        );
+        ws.send(JSON.stringify({ type: "error", message: "Неверная ставка" }));
         return;
       }
 
       const lobby = lobbies[mode];
       lobby.bet = bet;
 
-      if (!lobby.players.find((p) => p.tg_id === ws.user.tg_id)) {
+      if (!lobby.players.find((p) => p.id === ws.user.tg_id)) {
         lobby.players.push({
           id: ws.user.tg_id,
           db_id: ws.user.db_id,
@@ -554,9 +594,12 @@ wss.on("connection", (ws) => {
   });
 });
 
+
+// ======================= START =======================
 server.listen(PORT, () => {
   console.log("Server started on", PORT);
 });
+
 
 
 
