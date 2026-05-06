@@ -2,127 +2,100 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <title>AllPvPGamesHub</title>
+  <title>AllPvpGamesHub</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body>
-
-<div id="app">
-
-  <header class="header">
-    <div class="header-left">
-      <div class="header-title">AllPvPGamesHub</div>
-      <div id="header-balance" class="header-balance">0 ⭐</div>
-    </div>
-    <div class="header-right">
-      <div id="header-avatar" class="header-avatar"></div>
-    </div>
-  </header>
-
-  <main id="screen-content" class="screen">
-
-    <div id="screen-games" class="screen-inner">
-      <div class="games-screen">
-        <div class="games-left">
-
-          <div class="game-btn" data-mode="ice_arena">
-            <div class="game-btn-title">Ice Arena</div>
-            <div class="game-btn-sub">Классическая арена</div>
-          </div>
-
-          <div class="game-btn" data-mode="elimination">
-            <div class="game-btn-title">Выбивание</div>
-            <div class="game-btn-sub">Каждый раунд вылетает один</div>
-          </div>
-
-          <div class="game-btn" data-mode="ball_race">
-            <div class="game-btn-title">Гонка шаров</div>
-            <div class="game-btn-sub">Шары катятся по трассе</div>
-          </div>
-
-          <div class="game-btn" data-mode="color_arena">
-            <div class="game-btn-title">Красочная арена</div>
-            <div class="game-btn-sub">Закрашивай зоны</div>
-          </div>
-
-        </div>
-
-        <div class="mix-right">
-          <div class="mix-title">Микс режим</div>
-          <div class="mix-sub">Случайный режим дня</div>
-          <div id="mix-timer" class="mix-timer">12:55:17</div>
-        </div>
+<body class="app-root">
+  <div id="app">
+    <header class="top-bar">
+      <div class="balance">
+        <span id="balanceValue">0</span> ⭐
       </div>
-    </div>
+      <button id="addStarsBtn" class="icon-btn">+</button>
+    </header>
 
-    <div id="screen-balance" class="screen-inner hidden">
-      <div class="card">
-        <div class="card-title">Ваш баланс</div>
-        <div id="balance-value" class="card-balance">0 ⭐</div>
-      </div>
-    </div>
-
-    <div id="screen-profile" class="screen-inner hidden">
-      <div class="card profile-card">
-        <div class="profile-header">
-          <div id="profile-avatar" class="profile-avatar"></div>
-          <div class="profile-info">
-            <div id="profile-name" class="profile-name"></div>
-            <div id="profile-username" class="profile-username"></div>
-            <div id="profile-stars" class="profile-stars"></div>
-          </div>
-          <button id="settings-btn" class="icon-btn" title="Настройки">⚙️</button>
+    <main class="main-content">
+      <section class="profile-section">
+        <div class="profile-avatar" id="profileAvatar"></div>
+        <div class="profile-info">
+          <div id="profileName" class="profile-name">Игрок</div>
+          <div id="profileUsername" class="profile-username">@username</div>
         </div>
+        <button id="adminBtn" class="icon-btn">😈</button>
+      </section>
 
-        <div class="profile-row">
-          <button id="admin-btn" class="icon-btn" title="Админ панель">😎</button>
-          <span class="profile-row-label">Админ панель</span>
-        </div>
+      <section class="global-stats">
+        Игроков онлайн: <span id="onlineCount">0</span> • Общий банк:
+        <span id="totalBank">0</span> ⭐
+      </section>
+
+      <section class="modes-grid">
+        <button class="mode-card" data-mode="ice_arena">
+          <div class="mode-title">Арена</div>
+          <div class="mode-sub">Ставка → территория</div>
+        </button>
+        <button class="mode-card" data-mode="elimination">
+          <div class="mode-title">Выбывание</div>
+          <div class="mode-sub">Последний выжил</div>
+        </button>
+        <button class="mode-card" data-mode="color_arena">
+          <div class="mode-title">Цветная арена</div>
+          <div class="mode-sub">Кто больше закрасит</div>
+        </button>
+        <button class="mode-card" data-mode="ball_race">
+          <div class="mode-title">Гонка мячей</div>
+          <div class="mode-sub">Кто быстрее</div>
+        </button>
+        <button class="mode-card" data-mode="meteor_fall">
+          <div class="mode-title">Падение метеоритов</div>
+          <div class="mode-sub">Уклоняйся</div>
+        </button>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn nav-btn-active" data-tab="game">Игры</button>
+      <button class="nav-btn" data-tab="balance">Баланс</button>
+      <button class="nav-btn" data-tab="profile">Профиль</button>
+    </nav>
+  </div>
+
+  <!-- Админ-панель -->
+  <div id="adminOverlay" class="overlay hidden">
+    <div class="overlay-content">
+      <h2>Админ-панель</h2>
+
+      <div class="admin-block">
+        <h3>Выдать звёзды</h3>
+        <input id="adminUser" placeholder="@username" />
+        <input id="adminAmount" type="number" placeholder="Сколько звёзд" />
+        <button id="adminGiveBtn" class="primary-btn">Выдать</button>
       </div>
-    </div>
 
-  </main>
+      <div class="admin-block">
+        <h3>Рассылка</h3>
+        <textarea id="adminBroadcastText" placeholder="Текст сообщения"></textarea>
+        <button id="adminBroadcastBtn" class="primary-btn">Отправить</button>
+      </div>
 
-  <nav class="nav">
-    <button class="nav-btn nav-btn-active" data-tab="games">Игры</button>
-    <button class="nav-btn" data-tab="balance">Баланс</button>
-    <button class="nav-btn" data-tab="profile">Профиль</button>
-  </nav>
+      <div class="admin-block">
+        <h3>Турнир</h3>
+        <input id="tournamentMode" placeholder="mode (ice_arena...)" />
+        <input id="tournamentBet" type="number" placeholder="Ставка" />
+        <input id="tournamentPrize" type="number" placeholder="Приз" />
+        <button id="tournamentCreateBtn" class="primary-btn">Создать</button>
+      </div>
 
-</div>
-
-<div id="admin-overlay" class="overlay hidden">
-  <div class="overlay-panel">
-    <div class="overlay-header">
-      <div class="overlay-title">Админ панель</div>
-      <button id="admin-close" class="overlay-close">✕</button>
-    </div>
-    <div class="overlay-body">
-      <label class="field-label">Username игрока (без @)</label>
-      <input id="admin-username" class="field-input" placeholder="username" />
-
-      <label class="field-label">Сколько звёзд выдать</label>
-      <input id="admin-amount" class="field-input" type="number" placeholder="100" />
-
-      <button id="admin-send" class="primary-btn">Выдать звёзды</button>
-      <div id="admin-status" class="field-hint"></div>
-
-      <hr style="border:none;border-top:1px solid #1f2937;margin:8px 0;" />
-
-      <label class="field-label">Рассылка всем пользователям</label>
-      <textarea id="broadcast-text" class="field-input" rows="3" placeholder="Текст сообщения"></textarea>
-
-      <button id="broadcast-send" class="primary-btn">Отправить всем</button>
-      <div id="broadcast-status" class="field-hint"></div>
+      <button id="adminCloseBtn" class="secondary-btn">Закрыть</button>
     </div>
   </div>
-</div>
 
-<script src="app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
+
 
 
 
