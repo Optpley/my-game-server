@@ -7,72 +7,61 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="lobby-body">
+<body class="app-root">
+  <div id="lobbyApp">
+    <header class="top-bar">
+      <div class="balance">
+        <span id="balanceValue">0</span> ⭐
+      </div>
+      <button id="addStarsBtn" class="icon-btn">+</button>
+    </header>
 
-<div class="lobby-wrapper">
-  <div class="lobby-top">
-    <button id="historyBtn" class="lobby-history-btn">⟳</button>
-    <div class="lobby-info">
-      <div id="lobby-bank" class="lobby-bank">Банк - 0 ⭐</div>
-      <div id="lobby-players" class="lobby-players">Игроки - 0/2 для старта</div>
-    </div>
+    <main class="main-content">
+      <section class="lobby-header">
+        <button id="backBtn" class="lobby-history-btn">←</button>
+        <div id="lobbyTitle" class="lobby-title">Режим</div>
+      </section>
+
+      <section class="lobby-arena">
+        <canvas id="arenaCanvas" width="300" height="300"></canvas>
+      </section>
+
+      <section class="lobby-bets">
+        <div class="lobby-bets-row">
+          <button class="lobby-bet-btn" data-bet="50">50 ⭐</button>
+          <button class="lobby-bet-btn" data-bet="100">100 ⭐</button>
+          <button class="lobby-bet-btn" data-bet="500">500 ⭐</button>
+        </div>
+        <div class="lobby-bets-row">
+          <button class="lobby-bet-btn" data-bet="1000">1000 ⭐</button>
+          <button class="lobby-bet-btn" data-bet="2500">2500 ⭐</button>
+          <button class="lobby-bet-btn" data-bet="5000">5000 ⭐</button>
+        </div>
+        <div class="lobby-custom-bet">
+          <input id="customBetInput" type="number" placeholder="Своя ставка" />
+          <button id="customBetBtn" class="primary-btn">Играть</button>
+        </div>
+      </section>
+
+      <section class="lobby-players">
+        <div class="lobby-players-title">
+          Игроки: <span id="playersCount">0</span> • Банк:
+          <span id="bankValue">0</span> ⭐
+        </div>
+        <div id="playersList" class="lobby-players-list"></div>
+      </section>
+
+      <section class="lobby-history">
+        <div class="lobby-history-header">
+          <button id="historyBtn" class="lobby-history-btn">История</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </main>
   </div>
 
-  <div id="lobby-status" class="lobby-status">Ожидание игроков...</div>
-
-  <!-- АРЕНА СРАЗУ В ЛОББИ -->
-  <div id="arena" class="replay-canvas" style="height:260px;margin-bottom:10px;">
-    <div class="replay-header">
-      <div id="arenaTitle">Арена</div>
-    </div>
-  </div>
-
-  <div id="lobby-players-list" class="lobby-players-list"></div>
-
-  <div class="lobby-bets">
-    <button id="bet-custom" class="lobby-bet-btn lobby-bet-custom">Своя ставка</button>
-    <button data-bet="50" class="lobby-bet-btn">50 ⭐</button>
-    <button data-bet="100" class="lobby-bet-btn">100 ⭐</button>
-    <button data-bet="500" class="lobby-bet-btn">500 ⭐</button>
-    <button data-bet="1000" class="lobby-bet-btn">1000 ⭐</button>
-    <button data-bet="2500" class="lobby-bet-btn">2500 ⭐</button>
-    <button data-bet="5000" class="lobby-bet-btn">5000 ⭐</button>
-  </div>
-</div>
-
-<div id="bet-overlay" class="overlay hidden">
-  <div class="overlay-panel">
-    <div class="overlay-header">
-      <div class="overlay-title">Своя ставка</div>
-      <button id="bet-close" class="overlay-close">✕</button>
-    </div>
-    <div class="overlay-body">
-      <label class="field-label">Ставка в звёздах</label>
-      <input id="bet-input" class="field-input" type="number" placeholder="10" />
-      <button id="bet-apply" class="primary-btn">Играть</button>
-    </div>
-  </div>
-</div>
-
-<div id="historyOverlay" class="history-overlay">
-  <div class="history-panel">
-    <div class="history-header">
-      <div class="history-title">История режима</div>
-      <button id="historyClose" class="history-close-btn">✕</button>
-    </div>
-    <div class="history-filters">
-      <button class="history-filter-btn history-filter-active" data-filter="latest">Последние</button>
-      <button class="history-filter-btn" data-filter="biggest">Крупные</button>
-      <button class="history-filter-btn" data-filter="lucky">Везучие</button>
-      <button class="history-filter-btn" data-filter="mine">Мои</button>
-    </div>
-    <div id="historyList" class="history-list"></div>
-  </div>
-</div>
-
-<div id="alert" class="alert"></div>
-
-<script src="lobby.js"></script>
+  <script src="lobby.js"></script>
 </body>
 </html>
+
 
