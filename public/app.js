@@ -1,108 +1,113 @@
-let tg = window.Telegram.WebApp;
-if (tg && tg.expand) tg.expand();
-
-let initDataUnsafe = tg?.initDataUnsafe ?? {
-  user: { id: 1, username: "testuser", first_name: "Test", last_name: "User" },
-};
+const tg = window.Telegram.WebApp;
+tg.expand();
 
 let currentUser = null;
+let ws = null;
 
-function setAvatar(el, url) {
-  el.style.backgroundImage = url
-    ? `url("${url}")`
-    : "linear-gradient(135deg,#4f46e5,#06b6d4)";
+function $(id) {
+  return document.getElementById(id);
+}
+
+function initWebSocket() {
+  ws = new WebSocket(
+    (location.protocol === "https:" ? "wss://" : "ws://") + location.host
+  );
+
+  ws.onopen = () => {
+    ws.send(
+      JSON.stringify({
+        type: "auth",
+        initDataUnsafe: tg.initDataUnsafe,
+      })
+    );
+  };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "global_stats") {
+      const online = $("onlineCount");
+      const bank = $("totalBank");
+      if (online) online.textContent = data.online;
+      if (bank) bank.textContent = data.totalBank;
+    }
+  };
 }
 
 async function fetchMe() {
   const res = await fetch("/api/me", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ initDataUnsafe }),
+    body: JSON.stringify({ initDataUnsafe: tg.initDataUnsafe }),
   });
   const data = await res.json();
   if (!data.ok) return;
 
   currentUser = data.user;
-
-  document.getElementById("header-balance").textContent =
-    currentUser.stars + " ⭐";
-  document.getElementById("balance-value").textContent =
-    currentUser.stars + " ⭐";
-
-  setAvatar(document.getElementById("header-avatar"), currentUser.avatar);
-  setAvatar(document.getElementById("profile-avatar"), currentUser.avatar);
-
-  document.getElementById("profile-name").textContent = currentUser.name || "";
-  document.getElementById("profile-username").textContent = currentUser.username
+  $("balanceValue").textContent = currentUser.stars;
+  $("profileName").textContent = currentUser.name;
+  $("profileUsername").textContent = currentUser.username
     ? "@" + currentUser.username
     : "";
-  document.getElementById("profile-stars").textContent =
-    "Баланс: " + currentUser.stars + " ⭐";
+  if (currentUser.avatar) {
+    $("profileAvatar").style.backgroundImage = `url(${currentUser.avatar})`;
+  }
 }
 
-function initTabs() {
-  const screens = {
-    games: document.getElementById("screen-games"),
-    balance: document.getElementById("screen-balance"),
-    profile: document.getElementById("screen-profile"),
-  };
-
-  document.querySelectorAll(".nav-btn").forEach((btn) => {
+function initNav() {
+  const buttons = document.querySelectorAll(".nav-btn");
+  buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      const tab = btn.dataset.tab;
-
-      document
-        .querySelectorAll(".nav-btn")
-        .forEach((b) => b.classList.remove("nav-btn-active"));
+      buttons.forEach((b) => b.classList.remove("nav-btn-active"));
       btn.classList.add("nav-btn-active");
-
-      Object.values(screens).forEach((s) => s.classList.add("hidden"));
-      screens[tab].classList.remove("hidden");
+      // пока вкладки логически не разделяем — только визуал
     });
   });
 }
 
-function initGames() {
-  document.querySelectorAll(".game-btn").forEach((btn) => {
+function initModes() {
+  document.querySelectorAll(".mode-card").forEach((btn) => {
     btn.addEventListener("click", () => {
       const mode = btn.dataset.mode;
-      window.location.href = "/lobby.html?mode=" + mode;
+      const url = `/lobby.html?mode=${encodeURIComponent(mode)}`;
+      window.location.href = url;
     });
   });
 }
 
-function initProfile() {
-  const adminOverlay = document.getElementById("admin-overlay");
-  const adminBtn = document.getElementById("admin-btn");
-  const adminClose = document.getElementById("admin-close");
-  const adminSend = document.getElementById("admin-send");
-  const adminStatus = document.getElementById("admin-status");
-
-  const broadcastSend = document.getElementById("broadcast-send");
-  const broadcastText = document.getElementById("broadcast-text");
-  const broadcastStatus = document.getElementById("broadcast-status");
+function initAdmin() {
+  const adminOverlay = $("adminOverlay");
+  const adminBtn = $("adminBtn");
+  const adminCloseBtn = $("adminCloseBtn");
+  const adminGiveBtn = $("adminGiveBtn");
+  const adminBroadcastBtn = $("adminBroadcastBtn");
+  const tournamentCreateBtn = $("tournamentCreateBtn");
 
   adminBtn.addEventListener("click", () => {
-    adminStatus.textContent = "";
-    broadcastStatus.textContent = "";
+    if (
+      !currentUser ||
+      (currentUser.username !== "Capibaraboyonrealnokrutoy" &&
+        currentUser.tg_id !== 0)
+    ) {
+      tg.showPopup({
+        title: "Недоступно",
+        message: "У вас нет доступа к админ‑панели",
+        buttons: [{ id: "ok", type: "default", text: "Ок" }],
+      });
+      return;
+    }
     adminOverlay.classList.remove("hidden");
   });
 
-  adminClose.addEventListener("click", () => {
+  adminCloseBtn.addEventListener("click", () => {
     adminOverlay.classList.add("hidden");
   });
 
-  adminSend.addEventListener("click", async () => {
-    const username = document.getElementById("admin-username").value.trim();
-    const amount = Number(
-      document.getElementById("admin-amount").value.trim()
-    );
-    if (!username || !amount) {
-      adminStatus.textContent = "Заполни username и сумму";
-      return;
-    }
+  adminGiveBtn.addEventListener("click", async () => {
+    const username = $("adminUser").value.replace("@", "").trim();
+    const amount = Number($("adminAmount").value || 0);
+    if (!username || !amount) return;
 
-    adminStatus.textContent = "Отправляю...";
     const res = await fetch("/api/admin/give-stars", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -113,22 +118,15 @@ function initProfile() {
       }),
     });
     const data = await res.json();
-    if (!data.ok) {
-      adminStatus.textContent = "Ошибка: " + (data.error || "неизвестно");
-      return;
-    }
-    adminStatus.textContent =
-      "Готово. У @" + username + " теперь " + data.user.stars + " ⭐";
+    tg.showAlert(
+      data.ok ? "Звёзды выданы" : "Ошибка: " + (data.error || "unknown")
+    );
   });
 
-  broadcastSend.addEventListener("click", async () => {
-    const text = broadcastText.value.trim();
-    if (!text) {
-      broadcastStatus.textContent = "Введите текст";
-      return;
-    }
+  adminBroadcastBtn.addEventListener("click", async () => {
+    const text = $("adminBroadcastText").value.trim();
+    if (!text) return;
 
-    broadcastStatus.textContent = "Отправляю...";
     const res = await fetch("/api/admin/broadcast", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -138,47 +136,38 @@ function initProfile() {
       }),
     });
     const data = await res.json();
-    if (!data.ok) {
-      broadcastStatus.textContent = "Ошибка: " + (data.error || "неизвестно");
-      return;
-    }
-    broadcastStatus.textContent =
-      "Отправлено: " + data.sent + " пользователям";
+    tg.showAlert(
+      data.ok ? `Отправлено: ${data.sent}` : "Ошибка: " + (data.error || "unknown")
+    );
   });
 
-  document.getElementById("settings-btn").addEventListener("click", () => {
-    tg?.showPopup?.({
-      title: "Настройки",
-      message: "Тут будет:\n• смена языка\n• режим стримера\n• скрытие аватарок",
-      buttons: [{ id: "ok", type: "default", text: "Ок" }],
+  tournamentCreateBtn.addEventListener("click", async () => {
+    const mode = $("tournamentMode").value.trim() || "ice_arena";
+    const bet = Number($("tournamentBet").value || 50);
+    const prize = Number($("tournamentPrize").value || 1000);
+
+    const res = await fetch("/api/admin/tournament", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        adminSecret: "dev_secret",
+        mode,
+        bet,
+        prize,
+      }),
     });
+    const data = await res.json();
+    tg.showAlert(data.ok ? "Турнир создан" : "Ошибка");
   });
 }
 
-function initMixTimer() {
-  setInterval(() => {
-    const el = document.getElementById("mix-timer");
-    if (!el) return;
-    const now = new Date();
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    const diff = end - now;
-
-    const h = String(Math.floor(diff / 3600000)).padStart(2, "0");
-    const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, "0");
-    const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, "0");
-
-    el.textContent = `${h}:${m}:${s}`;
-  }, 1000);
-}
-
-(async () => {
+window.addEventListener("load", async () => {
   await fetchMe();
-  initTabs();
-  initGames();
-  initProfile();
-  initMixTimer();
-})();
+  initWebSocket();
+  initNav();
+  initModes();
+  initAdmin();
+});
 
 
 
