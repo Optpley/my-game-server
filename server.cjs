@@ -4,7 +4,6 @@ const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
-
 const fetchFn = (...args) => fetch(...args);
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "";
@@ -56,6 +55,13 @@ db.serialize(() => {
     prizes_json TEXT,
     status TEXT,
     created_at INTEGER
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS tournament_participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tournament_id INTEGER,
+    user_id INTEGER,
+    username TEXT,
+    avatar TEXT
   )`);
 });
 
@@ -311,7 +317,6 @@ function simulateMeteorFall(players, maxSteps = 250) {
   return { winnerId, frames };
 }
 
-// MIX now strictly uses only the five modes you specified
 function simulateMix(players, bet) {
   const allowed = ["ice_arena", "vybivanie", "color_arena", "ball_race", "meteor_fall"];
   const first = allowed[Math.floor(Math.random() * allowed.length)];
@@ -347,7 +352,7 @@ function simulateGame(mode, players, bet) {
   return simulateBallRace(players);
 }
 
-// Lobbies and rest of server unchanged...
+// Lobbies
 const modes = ["ice_arena", "vybivanie", "color_arena", "ball_race", "meteor_fall", "mix"];
 const lobbies = {};
 modes.forEach((m) => { lobbies[m] = { mode: m, bet: null, players: [], status: "waiting", pregame: null }; });
@@ -431,7 +436,8 @@ async function startGameForLobby(mode) {
   countdown();
 }
 
-// API endpoints and websocket handling remain the same as previous working version
+// API endpoints
+
 app.post("/api/me", async (req, res) => {
   try {
     const init = req.body.initDataUnsafe;
@@ -466,6 +472,7 @@ app.get("/api/games/replay/:id", (req, res) => {
   });
 });
 
+// admin give stars
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
   if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
@@ -477,26 +484,28 @@ app.post("/api/admin/give-stars", (req, res) => {
   });
 });
 
+// admin broadcast
 app.post("/api/admin/broadcast", (req, res) => {
   const { adminSecret, text } = req.body;
   if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
   if (!text || !text.trim()) return res.json({ ok: false, error: "no_text" });
+
+  // If BOT_TOKEN not set, return clear error so admin knows to configure it
+  if (!BOT_TOKEN) {
+    return res.json({ ok: false, error: "no_bot_token", message: "BOT_TOKEN not configured on server. Set BOT_TOKEN env var to enable real Telegram broadcast." });
+  }
+
   db.all("SELECT tg_id FROM users", async (err, rows) => {
     if (err) return res.json({ ok: false, error: "db_error" });
     let sent = 0;
     for (const r of rows) {
       try {
-        if (!BOT_TOKEN) {
-          console.log("Broadcast (log) to", r.tg_id, ":", text);
-          sent++;
-        } else {
-          await fetchFn(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: r.tg_id, text }),
-          });
-          sent++;
-        }
+        await fetchFn(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: r.tg_id, text }),
+        });
+        sent++;
       } catch (e) {
         console.error("broadcast error", e);
       }
@@ -505,6 +514,7 @@ app.post("/api/admin/broadcast", (req, res) => {
   });
 });
 
+// admin tournament create
 app.post("/api/admin/tournament", (req, res) => {
   const { adminSecret, modes: modesArr, bet, prizes } = req.body;
   if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
@@ -517,6 +527,79 @@ app.post("/api/admin/tournament", (req, res) => {
   });
 });
 
+// list tournaments
+app.get("/api/admin/tournaments", (req, res) => {
+  db.all("SELECT * FROM tournaments ORDER BY id DESC LIMIT 50", [], (err, rows) => {
+    if (err) return res.json({ ok: false });
+    const t = rows.map(r => ({ id: r.id, modes: JSON.parse(r.modes_json || "[]"), bet: r.bet, prizes: JSON.parse(r.prizes_json || "[]"), status: r.status, createdAt: r.created_at }));
+    res.json({ ok: true, tournaments: t });
+  });
+});
+
+// start tournament: collect participants from lobbies (players currently in selected modes), pick winners randomly, distribute prizes
+app.post("/api/admin/start-tournament", async (req, res) => {
+  const { adminSecret, tournamentId } = req.body;
+  if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
+  if (!tournamentId) return res.json({ ok: false, error: "no_id" });
+
+  db.get("SELECT * FROM tournaments WHERE id = ?", [tournamentId], async (err, row) => {
+    if (err || !row) return res.json({ ok: false, error: "not_found" });
+    const modesList = JSON.parse(row.modes_json || "[]");
+    const prizes = JSON.parse(row.prizes_json || "[]");
+
+    // collect participants from lobbies for selected modes
+    let participants = [];
+    modesList.forEach(m => {
+      const l = lobbies[m];
+      if (l && l.players && l.players.length) {
+        l.players.forEach(p => {
+          participants.push({ db_id: p.db_id, username: p.username, avatar: p.avatar });
+        });
+      }
+    });
+
+    // deduplicate by db_id
+    const map = {};
+    participants.forEach(p => { if (p && p.db_id) map[p.db_id] = p; });
+    participants = Object.values(map);
+
+    if (!participants.length) {
+      // fallback: pick from users table (active users)
+      const rowsUsers = await new Promise((resolve) => db.all("SELECT id, username, avatar FROM users ORDER BY id DESC LIMIT 200", [], (e, r) => resolve(r || [])));
+      participants = rowsUsers.map(u => ({ db_id: u.id, username: u.username, avatar: u.avatar }));
+    }
+
+    if (!participants.length) return res.json({ ok: false, error: "no_participants" });
+
+    // shuffle participants
+    for (let i = participants.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [participants[i], participants[j]] = [participants[j], participants[i]];
+    }
+
+    // pick winners for prizes (first N participants)
+    const winners = [];
+    for (let i = 0; i < prizes.length && i < participants.length; i++) {
+      winners.push({ prize: prizes[i], user: participants[i] });
+    }
+
+    // award prizes (add stars)
+    for (const w of winners) {
+      try {
+        await changeStars(w.user.db_id, Number(w.prize));
+      } catch (e) { console.error("award error", e); }
+    }
+
+    // update tournament status
+    db.run("UPDATE tournaments SET status = ? WHERE id = ?", ["finished", tournamentId], (uerr) => {
+      if (uerr) console.error(uerr);
+    });
+
+    res.json({ ok: true, winners });
+  });
+});
+
+// websocket
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
@@ -553,10 +636,12 @@ wss.on("connection", (ws) => {
         const colors = ["#4ade80", "#60a5fa", "#f97316", "#f472b6", "#a855f7"];
         const color = colors[Math.floor(Math.random() * colors.length)];
         lobby.players.push({ id: ws.user.tg_id, db_id: ws.user.db_id, username: ws.user.username, first_name: ws.user.first_name, avatar: ws.user.avatar, bet, color });
+      } else {
+        // update bet if rejoining with different bet
+        lobby.players = lobby.players.map(p => p.id === ws.user.tg_id ? { ...p, bet } : p);
       }
       broadcastLobbyState(mode);
-      if (lobby.players.length >= 2 && !["ball_race", "meteor_fall"].includes(mode)) startGameForLobby(mode);
-      else if (["ball_race", "meteor_fall"].includes(mode) && lobby.players.length >= 2) startGameForLobby(mode);
+      if (lobby.players.length >= 2) startGameForLobby(mode);
     }
   });
 
