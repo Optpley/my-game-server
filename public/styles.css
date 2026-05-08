@@ -43,42 +43,112 @@ body, html {
   font-size: 16px;
 }
 
-/* main layout */
-
 .main-content {
   flex: 1;
   padding: 10px 14px 70px;
 }
 
-/* profile */
+/* tabs */
 
-.profile-section {
+.tab {
+  display: none;
+}
+
+.active-tab {
+  display: block;
+}
+
+/* games old style */
+
+.games-header {
+  margin-bottom: 8px;
+}
+
+.games-title {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.games-subtitle {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.games-layout {
   display: flex;
-  align-items: center;
   gap: 10px;
   margin-bottom: 10px;
 }
 
-.profile-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
-  background: #1f2937;
-  background-size: cover;
-  background-position: center;
+.games-left {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.profile-info {
+.games-right {
   flex: 1;
 }
 
-.profile-name {
-  font-weight: 600;
+.game-big-btn {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: radial-gradient(circle at top, #111827, #020617);
+  padding: 10px;
+  text-align: left;
+  color: #e5e7eb;
 }
 
-.profile-username {
+.game-big-title {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.game-big-sub {
   font-size: 12px;
   color: #9ca3af;
+}
+
+.mix-block {
+  border-radius: 18px;
+  padding: 10px;
+  background: linear-gradient(180deg, #f472b6, #db2777);
+  color: #fdf2f8;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+}
+
+.mix-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.mix-title {
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.mix-sub {
+  font-size: 12px;
+}
+
+.mix-play-btn {
+  border-radius: 999px;
+  border: none;
+  padding: 8px 0;
+  background: #f9fafb;
+  color: #db2777;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.mix-timer {
+  font-size: 12px;
+  margin-top: auto;
 }
 
 /* global stats */
@@ -86,34 +156,6 @@ body, html {
 .global-stats {
   font-size: 13px;
   color: #facc15;
-  margin-bottom: 10px;
-}
-
-/* modes */
-
-.modes-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.mode-card {
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: radial-gradient(circle at top, #111827, #020617);
-  padding: 10px;
-  text-align: left;
-  color: #e5e7eb;
-}
-
-.mode-title {
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.mode-sub {
-  font-size: 12px;
-  color: #9ca3af;
 }
 
 /* bottom nav */
@@ -139,6 +181,73 @@ body, html {
 
 .nav-btn-active {
   color: #facc15;
+}
+
+/* profile / balance */
+
+.tab-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.tab-text {
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.profile-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: #1f2937;
+  background-size: cover;
+  background-position: center;
+}
+
+.profile-name {
+  font-weight: 600;
+}
+
+.profile-username {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 8px 0;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(180deg, #4ade80, #16a34a);
+  color: #022c22;
+  font-weight: 700;
+}
+
+.secondary-btn {
+  width: 100%;
+  padding: 8px 0;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: #020617;
+  color: #e5e7eb;
+  margin-top: 6px;
+}
+
+.admin-emoji-btn {
+  margin-top: 12px;
+  width: 100%;
+  padding: 8px 0;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: #020617;
+  color: #e5e7eb;
 }
 
 /* overlay */
@@ -186,24 +295,11 @@ body, html {
   font-size: 13px;
 }
 
-.primary-btn {
-  width: 100%;
-  padding: 8px 0;
-  border-radius: 999px;
-  border: none;
-  background: linear-gradient(180deg, #4ade80, #16a34a);
-  color: #022c22;
-  font-weight: 700;
-}
-
-.secondary-btn {
-  width: 100%;
-  padding: 8px 0;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  background: #020617;
-  color: #e5e7eb;
-  margin-top: 6px;
+.tournament-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
 }
 
 /* lobby */
