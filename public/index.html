@@ -1,35 +1,159 @@
-<!-- public/index.html (фрагмент mix modal и mix controls) -->
-<!-- Вставляй вместо существующей mix modal и mix controls в index.html -->
-<div class="mix-block">
-  <div class="mix-header">
-    <div class="mix-title">MIX режим</div>
-    <div class="mix-sub">Случайный PvP, смена режима в середине</div>
-  </div>
-  <div class="mode-badge" style="margin-top:6px;"><span class="green-dot"></span><span class="mode-count" data-mode="mix">0</span></div>
-  <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-    <button class="mix-play-btn" id="mixPlayBtn">Играть MIX</button>
-    <button id="mixThumbBtn" class="mix-thumb-btn" title="Просмотр режимов"></button>
-  </div>
-  <div class="mix-timer">Старт через <span id="mixTimer">05.00</span></div>
-</div>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>AllPvpGamesHub</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="app-root">
+    <header class="top-bar">
+      <div class="balance"><span id="balanceValue">0</span> ⭐</div>
+      <button id="addStarsBtn" class="icon-btn">+</button>
+    </header>
 
-<!-- modal: mix thumbnails (только те режимы, которые ты описал) -->
-<div id="mixModal" class="overlay hidden">
-  <div class="overlay-content">
-    <h3>Режимы MIX</h3>
-    <div class="mix-grid">
-      <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Арена</div></div>
-      <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Выбивание</div></div>
-      <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Цветная арена</div></div>
-      <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Гонка мячей</div></div>
-      <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Метеориты</div></div>
+    <main class="main-content">
+      <section id="tab-games" class="tab active-tab">
+        <div class="games-header">
+          <div class="games-title">PvP режимы</div>
+          <div class="games-subtitle">Выбери игру и ставку</div>
+        </div>
+
+        <div class="games-layout">
+          <div class="games-left">
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="ice_arena">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="ice_arena">0</span></div>
+                <div class="game-big-title">Арена</div>
+                <div class="game-big-sub">Ставка → территория</div>
+              </button>
+            </div>
+
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="vybivanie">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="vybivanie">0</span></div>
+                <div class="game-big-title">Выбивание</div>
+                <div class="game-big-sub">Выбивай соперников со стены</div>
+              </button>
+            </div>
+
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="color_arena">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="color_arena">0</span></div>
+                <div class="game-big-title">Цветная арена</div>
+                <div class="game-big-sub">Кто больше закрасит — тот победил</div>
+              </button>
+            </div>
+
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="ball_race">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="ball_race">0</span></div>
+                <div class="game-big-title">Гонка мячей</div>
+                <div class="game-big-sub">Вертикальная гонка</div>
+              </button>
+            </div>
+          </div>
+
+          <div class="games-right">
+            <div class="mix-block">
+              <div class="mix-header">
+                <div class="mix-title">MIX режим</div>
+                <div class="mix-sub">Случайный PvP, смена режима в середине</div>
+              </div>
+              <div class="mode-badge" style="margin-top:6px;"><span class="green-dot"></span><span class="mode-count" data-mode="mix">0</span></div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                <button class="mix-play-btn" id="mixPlayBtn">Играть MIX</button>
+                <button id="mixThumbBtn" class="mix-thumb-btn" title="Просмотр режимов"></button>
+              </div>
+              <div class="mix-timer">Старт через <span id="mixTimer">05.00</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-balance" class="tab">
+        <h2 class="tab-title">Баланс</h2>
+        <p class="tab-text">Ваш баланс: <span id="balanceValueBalance">0</span> ⭐</p>
+        <button class="primary-btn" id="topupBtn">Пополнить (заглушка)</button>
+      </section>
+
+      <section id="tab-profile" class="tab">
+        <h2 class="tab-title">Профиль</h2>
+        <div class="profile-block">
+          <div class="profile-avatar" id="profileAvatar"></div>
+          <div>
+            <div id="profileName" class="profile-name">Игрок</div>
+            <div id="profileUsername" class="profile-username">@username</div>
+          </div>
+        </div>
+        <button id="adminBtn" class="admin-emoji-btn">😈 Админ-панель</button>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn nav-btn-active" data-tab="games">Игры</button>
+      <button class="nav-btn" data-tab="balance">Баланс</button>
+      <button class="nav-btn" data-tab="profile">Профиль</button>
+    </nav>
+  </div>
+
+  <div id="mixModal" class="overlay hidden">
+    <div class="overlay-content">
+      <h3>Режимы MIX</h3>
+      <div class="mix-grid">
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Арена</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Выбивание</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Цветная арена</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Гонка мячей</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Метеориты</div></div>
+      </div>
+      <button id="mixCloseBtn" class="secondary-btn">Закрыть</button>
     </div>
-    <button id="mixCloseBtn" class="secondary-btn">Закрыть</button>
   </div>
-</div>
 
+  <div id="adminOverlay" class="overlay hidden">
+    <div class="overlay-content">
+      <button id="adminBackBtn" class="lobby-history-btn" style="margin-bottom:8px;">← Назад</button>
+      <h2>Админ-панель</h2>
 
+      <div class="admin-block">
+        <h3>Выдать звёзды</h3>
+        <input id="adminUser" placeholder="@username" />
+        <input id="adminAmount" type="number" placeholder="Сколько звёзд" />
+        <button id="adminGiveBtn" class="primary-btn">Выдать</button>
+      </div>
 
+      <div class="admin-block">
+        <h3>Рассылка</h3>
+        <textarea id="adminBroadcastText" placeholder="Текст сообщения"></textarea>
+        <button id="adminBroadcastBtn" class="primary-btn">Отправить</button>
+      </div>
 
+      <div class="admin-block">
+        <h3>Турнир</h3>
+        <div class="tournament-modes">
+          <label><input type="checkbox" class="t-mode" value="ice_arena" checked /> Арена</label>
+          <label><input type="checkbox" class="t-mode" value="vybivanie" /> Выбивание</label>
+          <label><input type="checkbox" class="t-mode" value="color_arena" /> Цветная арена</label>
+          <label><input type="checkbox" class="t-mode" value="ball_race" /> Гонка мячей</label>
+          <label><input type="checkbox" class="t-mode" value="meteor_fall" /> Метеориты</label>
+          <label><input type="checkbox" class="t-mode" value="mix" /> MIX</label>
+        </div>
+        <input id="tournamentBet" type="number" placeholder="Ставка" />
+        <input id="tournamentPrize1" type="number" placeholder="Приз 1" />
+        <input id="tournamentPrize2" type="number" placeholder="Приз 2 (опционально)" />
+        <input id="tournamentPrize3" type="number" placeholder="Приз 3 (опционально)" />
+        <button id="tournamentCreateBtn" class="primary-btn">Создать турнир</button>
+      </div>
+
+      <button id="adminCloseBtn" class="secondary-btn">Закрыть</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
 
 
