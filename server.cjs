@@ -11,8 +11,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN || "";
 const ADMIN_SECRET = "dev_secret";
 const PORT = process.env.PORT || 3000;
 
-// gameplay settings
-const COMMISSION = 0.05; // 5%
+const COMMISSION = 0.05;
 const PREGAME_SECONDS = 6;
 const PREVIEW_FRAMES = 30;
 
@@ -22,7 +21,6 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const db = new sqlite3.Database(path.join(__dirname, "db.sqlite"));
 
-// DB init
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
@@ -61,7 +59,6 @@ db.serialize(() => {
   )`);
 });
 
-// Helpers
 function getUserByTgId(tgId) {
   return new Promise((resolve, reject) => {
     db.get("SELECT * FROM users WHERE tg_id = ?", [tgId], (err, row) => {
@@ -141,12 +138,13 @@ function createGame(mode, bet, players, winnerId, replay) {
 function simulateIceArena(players, bet, maxSteps = 200) {
   const frames = [];
   const totalBet = players.reduce((s, p) => s + (p.bet || 0), 0) || 1;
+
   let startAngle = 0;
   const sectors = {};
   players.forEach((p) => {
     const portion = (p.bet || 0) / totalBet;
     const angle = portion * Math.PI * 2;
-    sectors[p.id] = { start: startAngle, end: startAngle + angle };
+    sectors[p.id] = { start: startAngle, end: startAngle + angle, portion };
     startAngle += angle;
   });
 
@@ -165,7 +163,13 @@ function simulateIceArena(players, bet, maxSteps = 200) {
       const py = 50 + Math.sin(mid) * 35;
       frame.push({ id: p.id, x: px, y: py, r: 7, alive: true, color: p.color, avatar: p.avatar });
     });
+
     frame.push({ id: "puck", x: puck.x, y: puck.y, r: 4, alive: true, color: "#fff", avatar: null });
+
+    if (t === 0) {
+      frame.push({ id: "sectors_meta", extra: { sectors } });
+    }
+
     frames.push(frame);
   }
 
@@ -180,7 +184,6 @@ function simulateIceArena(players, bet, maxSteps = 200) {
 }
 
 function simulateVyBivanie(players, maxSteps = 350) {
-  // Выбивание: боковые стены есть, верх/низ остаются дольше, потом одна убирается и подсвечивается
   const frames = [];
   const ids = players.map((p) => p.id);
   const totalBet = players.reduce((s, p) => s + (p.bet || 0), 0) || 1;
@@ -192,7 +195,7 @@ function simulateVyBivanie(players, maxSteps = 350) {
   });
 
   const steps = maxSteps;
-  const wallRemoveAt = Math.floor(steps * 0.75); // убираем позже
+  const wallRemoveAt = Math.floor(steps * 0.75);
   const wallWhich = Math.random() < 0.5 ? "top" : "bottom";
 
   for (let t = 0; t < steps; t++) {
@@ -205,10 +208,8 @@ function simulateVyBivanie(players, maxSteps = 350) {
         return;
       }
       b.x += b.vx; b.y += b.vy;
-      // side walls reflect
       if (b.x < 5) { b.x = 5; b.vx *= -1; }
       if (b.x > 95) { b.x = 95; b.vx *= -1; }
-      // top/bottom behavior
       if (t < wallRemoveAt) {
         if (b.y < 5) { b.y = 5; b.vy *= -1; }
         if (b.y > 95) { b.y = 95; b.vy *= -1; }
@@ -218,7 +219,6 @@ function simulateVyBivanie(players, maxSteps = 350) {
         if (wallWhich === "top" && b.y > 95) { b.y = 95; b.vy *= -1; }
         if (wallWhich === "bottom" && b.y < 5) { b.y = 5; b.vy *= -1; }
       }
-      // collisions
       ids.forEach((otherId) => {
         if (otherId === id) return;
         const o = balls[otherId];
@@ -311,14 +311,18 @@ function simulateMeteorFall(players, maxSteps = 250) {
   return { winnerId, frames };
 }
 
+// MIX now strictly uses only the five modes you specified
 function simulateMix(players, bet) {
-  const allModes = ["ice_arena", "vybivanie", "color_arena", "ball_race", "meteor_fall"];
-  const first = allModes[Math.floor(Math.random() * allModes.length)];
-  let second = allModes[Math.floor(Math.random() * allModes.length)];
-  if (second === first) second = allModes[(allModes.indexOf(first) + 1) % allModes.length];
-  const half = 120;
-  const a = simulateGameByName(first, players, bet, half);
-  const b = simulateGameByName(second, players, bet, half);
+  const allowed = ["ice_arena", "vybivanie", "color_arena", "ball_race", "meteor_fall"];
+  const first = allowed[Math.floor(Math.random() * allowed.length)];
+  let second = allowed[Math.floor(Math.random() * allowed.length)];
+  if (second === first) {
+    const idx = (allowed.indexOf(first) + 1) % allowed.length;
+    second = allowed[idx];
+  }
+  const halfSteps = 120;
+  const a = simulateGameByName(first, players, bet, halfSteps);
+  const b = simulateGameByName(second, players, bet, halfSteps);
   const frames = [...a.frames, ...b.frames];
   const winnerId = Math.random() < 0.5 ? a.winnerId : b.winnerId;
   return { winnerId, frames };
@@ -343,7 +347,7 @@ function simulateGame(mode, players, bet) {
   return simulateBallRace(players);
 }
 
-// Lobbies
+// Lobbies and rest of server unchanged...
 const modes = ["ice_arena", "vybivanie", "color_arena", "ball_race", "meteor_fall", "mix"];
 const lobbies = {};
 modes.forEach((m) => { lobbies[m] = { mode: m, bet: null, players: [], status: "waiting", pregame: null }; });
@@ -352,17 +356,12 @@ const wsClients = new Set();
 
 function buildLobbyPayload(lobby) {
   const payload = { type: "lobby_state", lobby: { mode: lobby.mode, bet: lobby.bet || 0, status: lobby.status, players: lobby.players.map((p) => ({ id: p.id, username: p.username, name: p.first_name || p.username, avatar: p.avatar, bet: p.bet })), preview: null, pregame: lobby.pregame || null } };
-  // preview: for waiting state and if at least 1 player (except ball_race and meteor_fall)
   if (lobby.status === "waiting" && lobby.players.length >= 1 && !["ball_race", "meteor_fall"].includes(lobby.mode)) {
     try {
       const simPlayers = lobby.players.map((p) => ({ id: p.id, db_id: p.db_id, username: p.username, avatar: p.avatar, bet: p.bet, color: p.color }));
       const sim = simulateGame(lobby.mode, simPlayers, lobby.bet);
-      // if only one player -> freeze preview (single frame repeated)
-      if (lobby.players.length === 1) {
-        payload.lobby.preview = [sim.frames[0] || []];
-      } else {
-        payload.lobby.preview = sim.frames.slice(0, PREVIEW_FRAMES);
-      }
+      if (lobby.players.length === 1) payload.lobby.preview = [sim.frames[0] || []];
+      else payload.lobby.preview = sim.frames.slice(0, PREVIEW_FRAMES);
     } catch (e) {
       payload.lobby.preview = null;
     }
@@ -395,7 +394,6 @@ async function startGameForLobby(mode) {
   if (lobby.status !== "waiting") return;
   if (lobby.players.length < 2) return;
 
-  // pregame
   lobby.status = "pregame";
   lobby.pregame = { seconds: PREGAME_SECONDS, startedAt: Date.now() };
   broadcastLobbyState(mode);
@@ -410,7 +408,6 @@ async function startGameForLobby(mode) {
     lobby.status = "running";
     broadcastLobbyState(mode);
 
-    // deduct bets
     for (const u of lobby.players) await changeStars(u.db_id, -lobby.bet);
 
     const playersForSim = lobby.players.map((p) => ({ id: p.id, db_id: p.db_id, username: p.username, first_name: p.first_name, avatar: p.avatar, bet: p.bet, color: p.color }));
@@ -434,7 +431,7 @@ async function startGameForLobby(mode) {
   countdown();
 }
 
-// API endpoints
+// API endpoints and websocket handling remain the same as previous working version
 app.post("/api/me", async (req, res) => {
   try {
     const init = req.body.initDataUnsafe;
@@ -469,7 +466,6 @@ app.get("/api/games/replay/:id", (req, res) => {
   });
 });
 
-// admin give stars
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
   if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
@@ -481,7 +477,6 @@ app.post("/api/admin/give-stars", (req, res) => {
   });
 });
 
-// admin broadcast
 app.post("/api/admin/broadcast", (req, res) => {
   const { adminSecret, text } = req.body;
   if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
@@ -492,7 +487,6 @@ app.post("/api/admin/broadcast", (req, res) => {
     for (const r of rows) {
       try {
         if (!BOT_TOKEN) {
-          // debug mode: log only
           console.log("Broadcast (log) to", r.tg_id, ":", text);
           sent++;
         } else {
@@ -511,7 +505,6 @@ app.post("/api/admin/broadcast", (req, res) => {
   });
 });
 
-// admin tournament (multiple prizes)
 app.post("/api/admin/tournament", (req, res) => {
   const { adminSecret, modes: modesArr, bet, prizes } = req.body;
   if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
@@ -524,7 +517,6 @@ app.post("/api/admin/tournament", (req, res) => {
   });
 });
 
-// websocket
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
@@ -572,8 +564,6 @@ wss.on("connection", (ws) => {
 });
 
 server.listen(PORT, () => { console.log("Server started on", PORT); });
-
-
 
 
 
