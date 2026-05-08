@@ -4,6 +4,8 @@ tg.expand();
 
 let currentUser = null;
 let ws = null;
+let wsReadyPromise = null;
+let wsReadyResolve = null;
 let currentMode = null;
 let currentBet = null;
 let arenaCanvas = null;
@@ -16,10 +18,37 @@ function getQueryParam(name) { const url = new URL(window.location.href); return
 
 async function fetchMe() {
   const res = await fetch("/api/me", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ initDataUnsafe: tg.initDataUnsafe }) });
-  const data = await res.json(); if (!data.ok) return; currentUser = data.user; $("balanceValue").textContent = currentUser.stars;
+  const data = await res.json(); if (!data.ok) return; currentUser = data.user; $("balanceValue").textContent = currentUser.stars; const b2 = $("balanceValueBalance"); if (b2) b2.textContent = currentUser.stars;
 }
 
 function initBack() { $("backBtn").addEventListener("click", () => window.location.href = "/index.html"); }
+
+function initWebSocket() {
+  if (ws) return;
+  wsReadyPromise = new Promise((resolve) => { wsReadyResolve = resolve; });
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "auth", initDataUnsafe: tg.initDataUnsafe }));
+    if (wsReadyResolve) wsReadyResolve();
+  };
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "lobby_state" && data.lobby.mode === currentMode) renderLobbyState(data.lobby);
+    if (data.type === "game_result" && data.game.mode === currentMode) { animateReplayInArena(data.game.replay); fetchMe(); }
+  };
+  ws.onclose = () => { ws = null; wsReadyPromise = null; wsReadyResolve = null; setTimeout(initWebSocket, 800); };
+  ws.onerror = () => { /* ignore */ };
+}
+
+function ensureWsReady() {
+  if (!ws) initWebSocket();
+  if (ws && ws.readyState === WebSocket.OPEN) return Promise.resolve();
+  return wsReadyPromise || new Promise((resolve) => {
+    const check = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) { clearInterval(check); resolve(); }
+    }, 100);
+  });
+}
 
 function initBets() {
   document.querySelectorAll(".lobby-bet-btn").forEach((btn) => {
@@ -37,10 +66,10 @@ function initBets() {
   });
 
   $("sheetCloseBtn").addEventListener("click", closeBetSheet);
-  $("sheetSetBtn").addEventListener("click", () => {
+  $("sheetSetBtn").addEventListener("click", async () => {
     const amount = Number($("sheetAmount").value || 0);
     if (!amount || amount <= 0) return;
-    joinLobby(amount);
+    await joinLobby(amount);
     closeBetSheet();
   });
 }
@@ -54,18 +83,9 @@ function closeBetSheet() {
   $("betSheet").classList.remove("open");
 }
 
-function initWebSocket() {
-  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
-  ws.onopen = () => ws.send(JSON.stringify({ type: "auth", initDataUnsafe: tg.initDataUnsafe }));
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === "lobby_state" && data.lobby.mode === currentMode) renderLobbyState(data.lobby);
-    if (data.type === "game_result" && data.game.mode === currentMode) { animateReplayInArena(data.game.replay); fetchMe(); }
-  };
-}
-
-function joinLobby(bet) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+async function joinLobby(bet) {
+  await ensureWsReady();
+  if (!ws || ws.readyState !== WebSocket.OPEN) { alert("Ошибка соединения. Попробуйте ещё раз."); return; }
   ws.send(JSON.stringify({ type: "join_lobby", mode: currentMode, bet }));
 }
 
@@ -82,6 +102,7 @@ function renderLobbyState(lobby) {
     div.appendChild(av); div.appendChild(span); list.appendChild(div);
   });
 
+  // preview: do not hide counts when opening mix modal; just render preview
   if (lobby.preview) {
     if (lobby.players.length === 1) lastPreview = [lobby.preview[0] || []];
     else lastPreview = lobby.preview;
