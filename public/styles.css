@@ -1,8 +1,8 @@
-/* styles.css (full) */
+/* styles.css (full updated) */
 body, html { margin:0; padding:0; background:#020617; color:#e5e7eb; font-family:system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text","Segoe UI",sans-serif; }
 .app-root { min-height:100vh; display:flex; flex-direction:column; }
 .top-bar { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:radial-gradient(circle at top,#1f2937,#020617); border-bottom:1px solid rgba(148,163,184,0.3); }
-.balance { display:none; }
+.balance { font-weight:700; font-size:16px; color:#facc15; } /* balance visible again */
 .icon-btn { border:none; background:#111827; color:#e5e7eb; border-radius:999px; padding:6px 10px; font-size:16px; }
 .main-content { flex:1; padding:10px 14px 90px; }
 .tab { display:none; } .active-tab { display:block; }
@@ -19,7 +19,8 @@ body, html { margin:0; padding:0; background:#020617; color:#e5e7eb; font-family
 .game-big-title { font-weight:700; margin-bottom:2px; }
 .game-big-sub { font-size:12px; color:#9ca3af; }
 
-.mode-badge { position:absolute; left:10px; top:6px; display:flex; align-items:center; gap:6px; z-index:5; }
+/* badge moved higher and with larger z-index so it doesn't overlap titles */
+.mode-badge { position:absolute; left:10px; top:4px; display:flex; align-items:center; gap:6px; z-index:20; }
 .green-dot { width:10px; height:10px; border-radius:50%; background:#10b981; box-shadow:0 0 6px rgba(16,185,129,0.6); display:inline-block; }
 .mode-count { font-size:12px; color:#d1fae5; font-weight:700; }
 
@@ -78,9 +79,7 @@ body, html { margin:0; padding:0; background:#020617; color:#e5e7eb; font-family
 
 .wall-highlight { stroke:#ff4d4f; stroke-width:4; }
 
-/* buttons */
 .primary-btn { background:#111827; color:#e5e7eb; border-radius:10px; padding:8px 12px; border:1px solid rgba(148,163,184,0.4); }
 .secondary-btn { background:transparent; color:#9ca3af; border-radius:10px; padding:8px 12px; border:1px solid rgba(148,163,184,0.2); }
-
 
 
