@@ -8,6 +8,31 @@ function $(id) {
   return document.getElementById(id);
 }
 
+async function fetchMe() {
+  const res = await fetch("/api/me", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ initDataUnsafe: tg.initDataUnsafe }),
+  });
+  const data = await res.json();
+  if (!data.ok) return;
+
+  currentUser = data.user;
+  $("balanceValue").textContent = currentUser.stars;
+  const b2 = $("balanceValueBalance");
+  if (b2) b2.textContent = currentUser.stars;
+
+  if ($("profileName")) {
+    $("profileName").textContent = currentUser.name;
+    $("profileUsername").textContent = currentUser.username
+      ? "@" + currentUser.username
+      : "";
+    if (currentUser.avatar) {
+      $("profileAvatar").style.backgroundImage = `url(${currentUser.avatar})`;
+    }
+  }
+}
+
 function initWebSocket() {
   ws = new WebSocket(
     (location.protocol === "https:" ? "wss://" : "ws://") + location.host
@@ -34,45 +59,49 @@ function initWebSocket() {
   };
 }
 
-async function fetchMe() {
-  const res = await fetch("/api/me", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ initDataUnsafe: tg.initDataUnsafe }),
-  });
-  const data = await res.json();
-  if (!data.ok) return;
-
-  currentUser = data.user;
-  $("balanceValue").textContent = currentUser.stars;
-  $("profileName").textContent = currentUser.name;
-  $("profileUsername").textContent = currentUser.username
-    ? "@" + currentUser.username
-    : "";
-  if (currentUser.avatar) {
-    $("profileAvatar").style.backgroundImage = `url(${currentUser.avatar})`;
-  }
-}
-
-function initNav() {
+function initTabs() {
   const buttons = document.querySelectorAll(".nav-btn");
+  const tabs = {
+    games: $("tab-games"),
+    balance: $("tab-balance"),
+    profile: $("tab-profile"),
+  };
+
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
       buttons.forEach((b) => b.classList.remove("nav-btn-active"));
       btn.classList.add("nav-btn-active");
-      // пока вкладки логически не разделяем — только визуал
+
+      const tab = btn.dataset.tab;
+      Object.keys(tabs).forEach((key) => {
+        tabs[key].classList.toggle("active-tab", key === tab);
+      });
     });
   });
 }
 
-function initModes() {
-  document.querySelectorAll(".mode-card").forEach((btn) => {
+function initGames() {
+  document.querySelectorAll(".game-big-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const mode = btn.dataset.mode;
-      const url = `/lobby.html?mode=${encodeURIComponent(mode)}`;
-      window.location.href = url;
+      window.location.href = `/lobby.html?mode=${encodeURIComponent(mode)}`;
     });
   });
+
+  const mixBtn = $("mixPlayBtn");
+  if (mixBtn) {
+    mixBtn.addEventListener("click", () => {
+      const allModes = [
+        "ice_arena",
+        "elimination",
+        "color_arena",
+        "ball_race",
+        "meteor_fall",
+      ];
+      const mode = allModes[Math.floor(Math.random() * allModes.length)];
+      window.location.href = `/lobby.html?mode=${encodeURIComponent(mode)}`;
+    });
+  }
 }
 
 function initAdmin() {
@@ -82,6 +111,8 @@ function initAdmin() {
   const adminGiveBtn = $("adminGiveBtn");
   const adminBroadcastBtn = $("adminBroadcastBtn");
   const tournamentCreateBtn = $("tournamentCreateBtn");
+
+  if (!adminBtn) return;
 
   adminBtn.addEventListener("click", () => {
     if (
@@ -142,16 +173,18 @@ function initAdmin() {
   });
 
   tournamentCreateBtn.addEventListener("click", async () => {
-    const mode = $("tournamentMode").value.trim() || "ice_arena";
     const bet = Number($("tournamentBet").value || 50);
     const prize = Number($("tournamentPrize").value || 1000);
+    const modes = Array.from(document.querySelectorAll(".t-mode"))
+      .filter((c) => c.checked)
+      .map((c) => c.value);
 
     const res = await fetch("/api/admin/tournament", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         adminSecret: "dev_secret",
-        mode,
+        modes,
         bet,
         prize,
       }),
@@ -164,8 +197,8 @@ function initAdmin() {
 window.addEventListener("load", async () => {
   await fetchMe();
   initWebSocket();
-  initNav();
-  initModes();
+  initTabs();
+  initGames();
   initAdmin();
 });
 
