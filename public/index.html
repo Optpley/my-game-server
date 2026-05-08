@@ -35,7 +35,7 @@
               <button class="game-big-btn" data-mode="vybivanie">
                 <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="vybivanie">0</span></div>
                 <div class="game-big-title">Выбивание</div>
-                <div class="game-big-sub">Выбивай соперников со стены</div>
+                <div class="game-big-sub">Стены остаются дольше; кто останется — тот победил</div>
               </button>
             </div>
 
@@ -60,14 +60,12 @@
             <div class="mix-block">
               <div class="mix-header">
                 <div class="mix-title">MIX режим</div>
-                <div class="mix-sub">Случайный PvP, смена режима в середине</div>
               </div>
               <div class="mode-badge" style="margin-top:6px;"><span class="green-dot"></span><span class="mode-count" data-mode="mix">0</span></div>
               <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
                 <button class="mix-play-btn" id="mixPlayBtn">Играть MIX</button>
                 <button id="mixThumbBtn" class="mix-thumb-btn" title="Просмотр режимов"></button>
               </div>
-              <div class="mix-timer">Старт через <span id="mixTimer">05.00</span></div>
             </div>
           </div>
         </div>
@@ -146,6 +144,7 @@
         <input id="tournamentPrize2" type="number" placeholder="Приз 2 (опционально)" />
         <input id="tournamentPrize3" type="number" placeholder="Приз 3 (опционально)" />
         <button id="tournamentCreateBtn" class="primary-btn">Создать турнир</button>
+        <button id="tournamentStartBtn" class="primary-btn" style="margin-top:8px;">Запустить последний турнир</button>
       </div>
 
       <button id="adminCloseBtn" class="secondary-btn">Закрыть</button>
