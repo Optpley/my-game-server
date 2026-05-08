@@ -63,7 +63,10 @@
                 <div class="mix-sub">Случайный PvP, смена режима в середине</div>
               </div>
               <div class="mode-badge" style="margin-top:6px;"><span class="green-dot"></span><span class="mode-count" data-mode="mix">0</span></div>
-              <button class="mix-play-btn" id="mixPlayBtn">Играть MIX</button>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                <button class="mix-play-btn" id="mixPlayBtn">Играть MIX</button>
+                <button id="mixThumbBtn" class="mix-thumb-btn" title="Просмотр режимов"></button>
+              </div>
               <div class="mix-timer">Старт через <span id="mixTimer">05.00</span></div>
             </div>
           </div>
@@ -96,9 +99,25 @@
     </nav>
   </div>
 
-  <!-- admin overlay (unchanged structure, includes checkboxes) -->
+  <!-- modal: mix thumbnails -->
+  <div id="mixModal" class="overlay hidden">
+    <div class="overlay-content">
+      <h3>Режимы (превью)</h3>
+      <div class="mix-grid">
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Арена</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Выбивание</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Цветная арена</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Гонка мячей</div></div>
+        <div class="mix-thumb"><div class="thumb-box">—</div><div class="thumb-label">Метеориты</div></div>
+      </div>
+      <button id="mixCloseBtn" class="secondary-btn">Закрыть</button>
+    </div>
+  </div>
+
+  <!-- admin overlay -->
   <div id="adminOverlay" class="overlay hidden">
     <div class="overlay-content">
+      <button id="adminBackBtn" class="lobby-history-btn" style="margin-bottom:8px;">← Назад</button>
       <h2>Админ-панель</h2>
 
       <div class="admin-block">
@@ -125,7 +144,9 @@
           <label><input type="checkbox" class="t-mode" value="mix" /> MIX</label>
         </div>
         <input id="tournamentBet" type="number" placeholder="Ставка" />
-        <input id="tournamentPrize" type="number" placeholder="Приз" />
+        <input id="tournamentPrize1" type="number" placeholder="Приз 1" />
+        <input id="tournamentPrize2" type="number" placeholder="Приз 2 (опционально)" />
+        <input id="tournamentPrize3" type="number" placeholder="Приз 3 (опционально)" />
         <button id="tournamentCreateBtn" class="primary-btn">Создать турнир</button>
       </div>
 
