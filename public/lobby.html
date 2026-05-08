@@ -1,18 +1,16 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <title>Лобби</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="app-root">
-  <div id="lobbyApp">
+<body>
+  <div id="lobbyApp" class="app-root">
     <header class="top-bar">
-      <div class="balance">
-        <span id="balanceValue">0</span> ⭐
-      </div>
+      <div class="balance"> <span id="balanceValue">0</span> ⭐</div>
       <button id="addStarsBtn" class="icon-btn">+</button>
     </header>
 
@@ -20,6 +18,9 @@
       <section class="lobby-header">
         <button id="backBtn" class="lobby-history-btn">← Меню</button>
         <div id="lobbyTitle" class="lobby-title">Режим</div>
+        <div style="margin-left:auto;color:#9ca3af;font-size:13px;">
+          Таймер: <span id="pregameTimer">—</span> • Комиссия: <span id="commission">5%</span>
+        </div>
       </section>
 
       <section class="lobby-arena">
@@ -45,8 +46,7 @@
 
       <section class="lobby-players">
         <div class="lobby-players-title">
-          Игроки: <span id="playersCount">0</span> • Банк:
-          <span id="bankValue">0</span> ⭐
+          Игроки: <span id="playersCount">0</span> • Банк: <span id="bankValue">0</span> ⭐
         </div>
         <div id="playersList" class="lobby-players-list"></div>
       </section>
@@ -63,6 +63,7 @@
   <script src="lobby.js"></script>
 </body>
 </html>
+
 
 
 
