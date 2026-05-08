@@ -1,23 +1,20 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <title>AllPvpGamesHub</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="app-root">
-  <div id="app">
+<body>
+  <div id="app" class="app-root">
     <header class="top-bar">
-      <div class="balance">
-        <span id="balanceValue">0</span> ⭐
-      </div>
+      <div class="balance"> <span id="balanceValue">0</span> ⭐</div>
       <button id="addStarsBtn" class="icon-btn">+</button>
     </header>
 
     <main class="main-content">
-      <!-- Вкладка ИГРЫ -->
       <section id="tab-games" class="tab active-tab">
         <div class="games-header">
           <div class="games-title">PvP режимы</div>
@@ -26,57 +23,59 @@
 
         <div class="games-layout">
           <div class="games-left">
-            <button class="game-big-btn" data-mode="ice_arena">
-              <div class="game-big-title">Арена</div>
-              <div class="game-big-sub">Ставка → территория</div>
-            </button>
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="ice_arena">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="ice_arena">0</span></div>
+                <div class="game-big-title">Арена</div>
+                <div class="game-big-sub">Ставка → территория</div>
+              </button>
+            </div>
 
-            <button class="game-big-btn" data-mode="elimination">
-              <div class="game-big-title">Выбывание</div>
-              <div class="game-big-sub">Последний выжил</div>
-            </button>
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="vybivanie">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="vybivanie">0</span></div>
+                <div class="game-big-title">Выбивание</div>
+                <div class="game-big-sub">Выбивай соперников со стены</div>
+              </button>
+            </div>
 
-            <button class="game-big-btn" data-mode="color_arena">
-              <div class="game-big-title">Цветная арена</div>
-              <div class="game-big-sub">Кто больше закрасит</div>
-            </button>
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="color_arena">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="color_arena">0</span></div>
+                <div class="game-big-title">Цветная арена</div>
+                <div class="game-big-sub">Кто больше закрасит — тот победил</div>
+              </button>
+            </div>
 
-            <button class="game-big-btn" data-mode="ball_race">
-              <div class="game-big-title">Гонка мячей</div>
-              <div class="game-big-sub">Кто быстрее</div>
-            </button>
+            <div class="mode-card-wrap">
+              <button class="game-big-btn" data-mode="ball_race">
+                <div class="mode-badge"><span class="green-dot"></span><span class="mode-count" data-mode="ball_race">0</span></div>
+                <div class="game-big-title">Гонка мячей</div>
+                <div class="game-big-sub">Вертикальная гонка</div>
+              </button>
+            </div>
           </div>
 
           <div class="games-right">
             <div class="mix-block">
               <div class="mix-header">
                 <div class="mix-title">MIX режим</div>
-                <div class="mix-sub">Случайный PvP</div>
+                <div class="mix-sub">Случайный PvP, смена режима в середине</div>
               </div>
+              <div class="mode-badge" style="margin-top:6px;"><span class="green-dot"></span><span class="mode-count" data-mode="mix">0</span></div>
               <button class="mix-play-btn" id="mixPlayBtn">Играть MIX</button>
-              <div class="mix-timer">
-                Старт через <span id="mixTimer">05.00</span>
-              </div>
+              <div class="mix-timer">Старт через <span id="mixTimer">05.00</span></div>
             </div>
           </div>
         </div>
-
-        <div class="global-stats">
-          Игроков онлайн: <span id="onlineCount">0</span> • Общий банк:
-          <span id="totalBank">0</span> ⭐
-        </div>
       </section>
 
-      <!-- Вкладка БАЛАНС -->
       <section id="tab-balance" class="tab">
         <h2 class="tab-title">Баланс</h2>
-        <p class="tab-text">
-          Ваш баланс: <span id="balanceValueBalance">0</span> ⭐
-        </p>
+        <p class="tab-text">Ваш баланс: <span id="balanceValueBalance">0</span> ⭐</p>
         <button class="primary-btn" id="topupBtn">Пополнить (заглушка)</button>
       </section>
 
-      <!-- Вкладка ПРОФИЛЬ -->
       <section id="tab-profile" class="tab">
         <h2 class="tab-title">Профиль</h2>
         <div class="profile-block">
@@ -86,7 +85,6 @@
             <div id="profileUsername" class="profile-username">@username</div>
           </div>
         </div>
-
         <button id="adminBtn" class="admin-emoji-btn">😈 Админ-панель</button>
       </section>
     </main>
@@ -98,7 +96,7 @@
     </nav>
   </div>
 
-  <!-- Админ-панель -->
+  <!-- admin overlay (unchanged structure, includes checkboxes) -->
   <div id="adminOverlay" class="overlay hidden">
     <div class="overlay-content">
       <h2>Админ-панель</h2>
@@ -120,10 +118,11 @@
         <h3>Турнир</h3>
         <div class="tournament-modes">
           <label><input type="checkbox" class="t-mode" value="ice_arena" checked /> Арена</label>
-          <label><input type="checkbox" class="t-mode" value="elimination" /> Выбывание</label>
+          <label><input type="checkbox" class="t-mode" value="vybivanie" /> Выбивание</label>
           <label><input type="checkbox" class="t-mode" value="color_arena" /> Цветная арена</label>
           <label><input type="checkbox" class="t-mode" value="ball_race" /> Гонка мячей</label>
           <label><input type="checkbox" class="t-mode" value="meteor_fall" /> Метеориты</label>
+          <label><input type="checkbox" class="t-mode" value="mix" /> MIX</label>
         </div>
         <input id="tournamentBet" type="number" placeholder="Ставка" />
         <input id="tournamentPrize" type="number" placeholder="Приз" />
@@ -137,6 +136,7 @@
   <script src="app.js"></script>
 </body>
 </html>
+
 
 
 
