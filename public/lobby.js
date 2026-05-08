@@ -78,12 +78,7 @@ function initWebSocket() {
     if (data.type === "game_result" && data.game.mode === currentMode) {
       lastReplay = data.game.replay;
       animateReplayInArena(lastReplay);
-      // баланс обновим после игры
       fetchMe();
-    }
-
-    if (data.type === "global_stats") {
-      // можно игнорить или показывать где-то
     }
   };
 }
@@ -130,13 +125,13 @@ function initArena() {
     const rect = arenaCanvas.getBoundingClientRect();
     arenaCanvas.width = rect.width * window.devicePixelRatio;
     arenaCanvas.height = rect.width * window.devicePixelRatio;
+    arenaCtx.setTransform(1, 0, 0, 1, 0, 0);
     arenaCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    drawIdleArena();
   }
 
   resize();
   window.addEventListener("resize", resize);
-
-  drawIdleArena();
 }
 
 function clearArena() {
@@ -181,7 +176,6 @@ function animateReplayInArena(replay) {
   function drawFrame() {
     clearArena();
 
-    // фон
     const grd = arenaCtx.createRadialGradient(
       w / 2,
       h / 4,
@@ -208,20 +202,17 @@ function animateReplayInArena(replay) {
       const y = 10 + (obj.y / 100) * (h - 20);
       const r = (obj.r || 5) * (w / 300);
 
+      arenaCtx.save();
       arenaCtx.beginPath();
       arenaCtx.arc(x, y, r, 0, Math.PI * 2);
       arenaCtx.closePath();
+      arenaCtx.clip();
 
       if (obj.avatar) {
         const img = new Image();
         img.src = obj.avatar;
         img.onload = () => {
-          const pattern = arenaCtx.createPattern(img, "no-repeat");
-          arenaCtx.save();
-          arenaCtx.clip();
-          arenaCtx.fillStyle = pattern;
-          arenaCtx.fill();
-          arenaCtx.restore();
+          arenaCtx.drawImage(img, x - r, y - r, r * 2, r * 2);
         };
         arenaCtx.fillStyle = obj.color || "#22c55e";
         arenaCtx.fill();
@@ -229,6 +220,8 @@ function animateReplayInArena(replay) {
         arenaCtx.fillStyle = obj.color || "#22c55e";
         arenaCtx.fill();
       }
+
+      arenaCtx.restore();
     });
 
     frameIndex++;
@@ -244,7 +237,9 @@ function animateReplayInArena(replay) {
 
 function initHistory() {
   $("historyBtn").addEventListener("click", async () => {
-    const res = await fetch(`/api/history?mode=${encodeURIComponent(currentMode)}&filter=latest`);
+    const res = await fetch(
+      `/api/history?mode=${encodeURIComponent(currentMode)}&filter=latest`
+    );
     const data = await res.json();
     if (!data.ok) return;
 
@@ -279,6 +274,7 @@ window.addEventListener("load", async () => {
   initHistory();
   initWebSocket();
 });
+
 
 
 
