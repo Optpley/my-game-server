@@ -1,11 +1,9 @@
-// ======================= IMPORTS =======================
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
 
-// Node 18+ имеет встроенный fetch
 const fetchFn = (...args) => fetch(...args);
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN";
@@ -18,8 +16,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const db = new sqlite3.Database(path.join(__dirname, "db.sqlite"));
 
-
-// ======================= DB INIT =======================
+// ---------- DB ----------
 db.serialize(() => {
   db.run(
     `CREATE TABLE IF NOT EXISTS users (
@@ -59,10 +56,20 @@ db.serialize(() => {
       replay_json TEXT
     )`
   );
+
+  db.run(
+    `CREATE TABLE IF NOT EXISTS tournaments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      modes_json TEXT,
+      bet INTEGER,
+      prize INTEGER,
+      status TEXT,
+      created_at INTEGER
+    )`
+  );
 });
 
-
-// ======================= HELPERS =======================
+// ---------- HELPERS ----------
 function getUserByTgId(tgId) {
   return new Promise((resolve, reject) => {
     db.get("SELECT * FROM users WHERE tg_id = ?", [tgId], (err, row) => {
@@ -165,22 +172,15 @@ function createGame(mode, bet, players, winnerId, replay) {
   });
 }
 
-
-// ======================= GAME SIMULATION =======================
-//
-// Все игры возвращают кадры формата:
-// frame: [{ id, x, y, r, alive, color, avatar, extra }]
-//
+// ---------- GAME SIMS ----------
+// координаты 0–100, r в условных единицах
 
 function simulateIceArena(players, bet) {
   const frames = [];
-  const ids = players.map((p) => p.id);
-
-  // Территория пропорциональна ставке: делим круг на секторы
   const totalBet = players.reduce((s, p) => s + p.bet, 0) || 1;
+
   let startAngle = 0;
   const sectors = {};
-
   players.forEach((p) => {
     const portion = p.bet / totalBet;
     const angle = portion * Math.PI * 2;
@@ -188,7 +188,6 @@ function simulateIceArena(players, bet) {
     startAngle += angle;
   });
 
-  // Шайба
   let puck = {
     x: 50,
     y: 50,
@@ -198,30 +197,27 @@ function simulateIceArena(players, bet) {
 
   const steps = 200;
   for (let t = 0; t < steps; t++) {
-    // Двигаем шайбу
     puck.x += puck.vx * 2;
     puck.y += puck.vy * 2;
 
     if (puck.x < 5 || puck.x > 95) puck.vx *= -1;
     if (puck.y < 5 || puck.y > 95) puck.vy *= -1;
 
-    // Позиции игроков — просто для визуала (по кругу)
     const frame = [];
-    players.forEach((p, idx) => {
-      const angleMid =
-        (sectors[p.id].start + sectors[p.id].end) / 2;
-      const px = 50 + Math.cos(angleMid) * 35;
-      const py = 50 + Math.sin(angleMid) * 35;
+
+    players.forEach((p) => {
+      const mid = (sectors[p.id].start + sectors[p.id].end) / 2;
+      const px = 50 + Math.cos(mid) * 35;
+      const py = 50 + Math.sin(mid) * 35;
 
       frame.push({
         id: p.id,
         x: px,
         y: py,
-        r: 8,
+        r: 7,
         alive: true,
         color: p.color,
         avatar: p.avatar,
-        extra: { sector: sectors[p.id] },
       });
     });
 
@@ -233,13 +229,11 @@ function simulateIceArena(players, bet) {
       alive: true,
       color: "#ffffff",
       avatar: null,
-      extra: { type: "puck" },
     });
 
     frames.push(frame);
   }
 
-  // Определяем победителя по углу шайбы
   const dx = puck.x - 50;
   const dy = puck.y - 50;
   let angle = Math.atan2(dy, dx);
@@ -260,15 +254,14 @@ function simulateIceArena(players, bet) {
 function simulateElimination(players) {
   const frames = [];
   const ids = players.map((p) => p.id);
-
-  const balls = {};
   const totalBet = players.reduce((s, p) => s + p.bet, 0) || 1;
 
+  const balls = {};
   players.forEach((p, i) => {
-    const sizeFactor = 0.5 + p.bet / totalBet * 1.5; // больше ставка — больше мяч
-    const speedFactor = 1.5 - Math.min(1.2, p.bet / totalBet * 1.2); // больше ставка — медленнее
+    const sizeFactor = 0.5 + (p.bet / totalBet) * 1.5;
+    const speedFactor = 1.5 - Math.min(1.2, (p.bet / totalBet) * 1.2);
     balls[p.id] = {
-      x: 20 + i * (60 / players.length),
+      x: 20 + (i * 60) / players.length,
       y: 50,
       vx: (Math.random() - 0.5) * speedFactor,
       vy: (Math.random() - 0.5) * speedFactor,
@@ -283,6 +276,8 @@ function simulateElimination(players) {
 
     ids.forEach((id) => {
       const b = balls[id];
+      const p = players.find((x) => x.id === id);
+
       if (!b.alive) {
         frame.push({
           id,
@@ -290,8 +285,8 @@ function simulateElimination(players) {
           y: b.y,
           r: b.r,
           alive: false,
-          color: b.color,
-          avatar: b.avatar,
+          color: p.color,
+          avatar: p.avatar,
         });
         return;
       }
@@ -299,11 +294,8 @@ function simulateElimination(players) {
       b.x += b.vx;
       b.y += b.vy;
 
-      // Убрана часть стен: сверху и снизу можно вылететь
       if (b.x < 5 || b.x > 95) b.vx *= -1;
-      if (b.y < 0 || b.y > 100) {
-        b.alive = false;
-      }
+      if (b.y < 0 || b.y > 100) b.alive = false;
 
       frame.push({
         id,
@@ -311,8 +303,8 @@ function simulateElimination(players) {
         y: b.y,
         r: b.r,
         alive: b.alive,
-        color: players.find((p) => p.id === id).color,
-        avatar: players.find((p) => p.id === id).avatar,
+        color: p.color,
+        avatar: p.avatar,
       });
     });
 
@@ -331,16 +323,15 @@ function simulateElimination(players) {
 function simulateColorArena(players) {
   const frames = [];
   const ids = players.map((p) => p.id);
-
-  const balls = {};
   const gridSize = 20;
   const grid = Array.from({ length: gridSize }, () =>
     Array.from({ length: gridSize }, () => null)
   );
 
+  const balls = {};
   players.forEach((p, i) => {
     balls[p.id] = {
-      x: 20 + i * (60 / players.length),
+      x: 20 + (i * 60) / players.length,
       y: 50,
       vx: (Math.random() - 0.5) * 1.5,
       vy: (Math.random() - 0.5) * 1.5,
@@ -354,6 +345,7 @@ function simulateColorArena(players) {
 
     ids.forEach((id) => {
       const b = balls[id];
+      const p = players.find((x) => x.id === id);
 
       b.x += b.vx;
       b.y += b.vy;
@@ -361,7 +353,6 @@ function simulateColorArena(players) {
       if (b.x < 5 || b.x > 95) b.vx *= -1;
       if (b.y < 5 || b.y > 95) b.vy *= -1;
 
-      // Красим клетку
       const gx = Math.floor((b.x / 100) * gridSize);
       const gy = Math.floor((b.y / 100) * gridSize);
       if (gx >= 0 && gx < gridSize && gy >= 0 && gy < gridSize) {
@@ -374,12 +365,11 @@ function simulateColorArena(players) {
         y: b.y,
         r: b.r,
         alive: true,
-        color: players.find((p) => p.id === id).color,
-        avatar: players.find((p) => p.id === id).avatar,
+        color: p.color,
+        avatar: p.avatar,
       });
     });
 
-    // Для фронта можно передавать карту
     frame.push({
       id: "grid",
       x: 0,
@@ -394,7 +384,6 @@ function simulateColorArena(players) {
     frames.push(frame);
   }
 
-  // Подсчёт площади
   const score = {};
   ids.forEach((id) => (score[id] = 0));
   for (let y = 0; y < gridSize; y++) {
@@ -423,9 +412,9 @@ function simulateBallRace(players) {
   const balls = {};
   players.forEach((p, i) => {
     balls[p.id] = {
-      x: 20 + i * (60 / players.length),
+      x: 20 + (i * 60) / players.length,
       y: 5,
-      vy: 0.5 + Math.random() * 0.5,
+      vy: 0.6 + Math.random() * 0.4,
       r: 5,
     };
   });
@@ -436,6 +425,7 @@ function simulateBallRace(players) {
 
     ids.forEach((id) => {
       const b = balls[id];
+      const p = players.find((x) => x.id === id);
 
       b.y += b.vy;
       if (b.y > 95) b.y = 95;
@@ -446,8 +436,8 @@ function simulateBallRace(players) {
         y: b.y,
         r: b.r,
         alive: true,
-        color: players.find((p) => p.id === id).color,
-        avatar: players.find((p) => p.id === id).avatar,
+        color: p.color,
+        avatar: p.avatar,
       });
     });
 
@@ -473,7 +463,7 @@ function simulateMeteorFall(players) {
   const balls = {};
   players.forEach((p, i) => {
     balls[p.id] = {
-      x: 20 + i * (60 / players.length),
+      x: 20 + (i * 60) / players.length,
       y: 90,
       alive: true,
       r: 5,
@@ -481,8 +471,8 @@ function simulateMeteorFall(players) {
   });
 
   const meteors = [];
-
   const steps = 250;
+
   for (let t = 0; t < steps; t++) {
     if (Math.random() < 0.2) {
       meteors.push({
@@ -501,13 +491,11 @@ function simulateMeteorFall(players) {
       const b = balls[id];
       if (!b.alive) return;
 
-      // простое уклонение: случайный шаг влево/вправо
       const dir = Math.random() < 0.5 ? -1 : 1;
       b.x += dir * 1.5;
       if (b.x < 5) b.x = 5;
       if (b.x > 95) b.x = 95;
 
-      // проверка столкновений
       meteors.forEach((m) => {
         const dx = m.x - b.x;
         const dy = m.y - b.y;
@@ -522,14 +510,15 @@ function simulateMeteorFall(players) {
 
     ids.forEach((id) => {
       const b = balls[id];
+      const p = players.find((x) => x.id === id);
       frame.push({
         id,
         x: b.x,
         y: b.y,
         r: b.r,
         alive: b.alive,
-        color: players.find((p) => p.id === id).color,
-        avatar: players.find((p) => p.id === id).avatar,
+        color: p.color,
+        avatar: p.avatar,
       });
     });
 
@@ -542,7 +531,6 @@ function simulateMeteorFall(players) {
         alive: true,
         color: "#ff4444",
         avatar: null,
-        extra: { type: "meteor" },
       });
     });
 
@@ -559,22 +547,24 @@ function simulateMeteorFall(players) {
 }
 
 function simulateGame(mode, players, bet) {
-  // players: [{ id: tg_id, db_id, username, first_name, avatar, bet, color }]
   if (mode === "ice_arena") return simulateIceArena(players, bet);
   if (mode === "elimination") return simulateElimination(players);
   if (mode === "color_arena") return simulateColorArena(players);
   if (mode === "ball_race") return simulateBallRace(players);
   if (mode === "meteor_fall") return simulateMeteorFall(players);
-
-  // fallback
   return simulateBallRace(players);
 }
 
+// ---------- LOBBIES ----------
+const modes = [
+  "ice_arena",
+  "elimination",
+  "color_arena",
+  "ball_race",
+  "meteor_fall",
+];
 
-// ======================= LOBBIES =======================
-const modes = ["ice_arena", "elimination", "ball_race", "color_arena", "meteor_fall"];
 const lobbies = {};
-
 modes.forEach((m) => {
   lobbies[m] = {
     mode: m,
@@ -611,8 +601,8 @@ function broadcastLobbyState(mode) {
 
 function broadcastGlobalStats() {
   const online = wsClients.size;
-
   let totalBank = 0;
+
   for (const m of modes) {
     const lobby = lobbies[m];
     if (lobby.bet && lobby.players.length > 0) {
@@ -705,10 +695,7 @@ async function startGameForLobby(mode) {
   broadcastLobbyState(mode);
 }
 
-
-// ======================= API =======================
-
-// /api/me
+// ---------- API ----------
 app.post("/api/me", async (req, res) => {
   try {
     const init = req.body.initDataUnsafe;
@@ -736,7 +723,6 @@ app.post("/api/me", async (req, res) => {
   }
 });
 
-// История
 app.get("/api/history", (req, res) => {
   const mode = req.query.mode;
   const filter = req.query.filter || "latest";
@@ -780,7 +766,6 @@ app.get("/api/history", (req, res) => {
   });
 });
 
-// Реплей
 app.get("/api/games/replay/:id", (req, res) => {
   const id = Number(req.params.id);
 
@@ -816,7 +801,6 @@ app.get("/api/games/replay/:id", (req, res) => {
   );
 });
 
-// Админ — звёзды
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
 
@@ -843,7 +827,6 @@ app.post("/api/admin/give-stars", (req, res) => {
   );
 });
 
-// Админ — рассылка
 app.post("/api/admin/broadcast", (req, res) => {
   const { adminSecret, text } = req.body;
 
@@ -884,8 +867,7 @@ app.post("/api/admin/broadcast", (req, res) => {
   });
 });
 
-
-// ======================= TOURNAMENTS =======================
+// ---------- TOURNAMENTS ----------
 let currentTournament = null;
 
 app.get("/api/tournament", (req, res) => {
@@ -893,24 +875,36 @@ app.get("/api/tournament", (req, res) => {
 });
 
 app.post("/api/admin/tournament", (req, res) => {
-  const { adminSecret, mode, bet, prize } = req.body;
+  const { adminSecret, modes: modesArr, bet, prize } = req.body;
 
   if (adminSecret !== ADMIN_SECRET)
     return res.json({ ok: false, error: "forbidden" });
 
-  currentTournament = {
-    id: Date.now(),
-    mode: mode || "ice_arena",
-    bet: bet || 50,
-    prize: prize || 1000,
-    status: "waiting",
-  };
+  const list = Array.isArray(modesArr) && modesArr.length ? modesArr : ["ice_arena"];
 
-  res.json({ ok: true, tournament: currentTournament });
+  const now = Date.now();
+  db.run(
+    `INSERT INTO tournaments (modes_json, bet, prize, status, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [JSON.stringify(list), bet || 50, prize || 1000, "waiting", now],
+    function (err) {
+      if (err) return res.json({ ok: false });
+
+      currentTournament = {
+        id: this.lastID,
+        modes: list,
+        bet: bet || 50,
+        prize: prize || 1000,
+        status: "waiting",
+        createdAt: now,
+      };
+
+      res.json({ ok: true, tournament: currentTournament });
+    }
+  );
 });
 
-
-// ======================= WEBSOCKET =======================
+// ---------- WEBSOCKET ----------
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
@@ -961,7 +955,6 @@ wss.on("connection", (ws) => {
       lobby.bet = bet;
 
       if (!lobby.players.find((p) => p.id === ws.user.tg_id)) {
-        // цвет просто для визуала, фронт может игнорить
         const colors = ["#4ade80", "#60a5fa", "#f97316", "#f472b6", "#a855f7"];
         const color =
           colors[Math.floor(Math.random() * colors.length)];
@@ -990,8 +983,7 @@ wss.on("connection", (ws) => {
   });
 });
 
-
-// ======================= START =======================
+// ---------- START ----------
 server.listen(PORT, () => {
   console.log("Server started on", PORT);
 });
