@@ -1,3 +1,4 @@
+// server.cjs
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
@@ -10,13 +11,18 @@ const BOT_TOKEN = process.env.BOT_TOKEN || "YOUR_BOT_TOKEN";
 const ADMIN_SECRET = "dev_secret";
 const PORT = process.env.PORT || 3000;
 
+// gameplay settings
+const COMMISSION = 0.05; // 5% комиссия
+const PREGAME_SECONDS = 6; // таймер до старта (в секундах)
+const PREVIEW_FRAMES = 30; // сколько кадров в preview
+
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const db = new sqlite3.Database(path.join(__dirname, "db.sqlite"));
 
-// ---------- DB ----------
+// DB init
 db.serialize(() => {
   db.run(
     `CREATE TABLE IF NOT EXISTS users (
@@ -69,7 +75,7 @@ db.serialize(() => {
   );
 });
 
-// ---------- HELPERS ----------
+// helpers
 function getUserByTgId(tgId) {
   return new Promise((resolve, reject) => {
     db.get("SELECT * FROM users WHERE tg_id = ?", [tgId], (err, row) => {
@@ -110,7 +116,7 @@ function updateUserFromInit(userId, init) {
       `UPDATE users
        SET username = ?, first_name = ?, last_name = ?, avatar = ?
        WHERE id = ?`,
-      [u.username, u.first_name, u.last_name, u.photo_url, userId],
+      [u.username || null, u.first_name || null, u.last_name || null, u.photo_url || null, userId],
       (err) => {
         if (err) return reject(err);
         db.get("SELECT * FROM users WHERE id = ?", [userId], (e, row) => {
@@ -154,14 +160,14 @@ function createGame(mode, bet, players, winnerId, replay) {
            VALUES (?, ?, ?, ?)`
         );
         players.forEach((p) => {
-          stmt.run(gameId, p.id, p.username, p.avatar);
+          stmt.run(gameId, p.id, p.username || null, p.avatar || null);
         });
         stmt.finalize();
 
         db.run(
           `INSERT INTO game_replays (game_id, replay_json)
            VALUES (?, ?)`,
-          [gameId, JSON.stringify(replay)],
+          [gameId, JSON.stringify(replay || [])],
           (e2) => {
             if (e2) return reject(e2);
             resolve({ id: gameId, mode, bet, winnerId, createdAt: now });
@@ -172,17 +178,18 @@ function createGame(mode, bet, players, winnerId, replay) {
   });
 }
 
-// ---------- GAME SIMS ----------
-// координаты 0–100, r в условных единицах
+// --- Game simulations ---
+// All sims use coordinates 0..100
+// Each player object: { id, db_id, username, avatar, bet, color }
 
-function simulateIceArena(players, bet) {
+function simulateIceArena(players, bet, maxSteps = 200) {
   const frames = [];
-  const totalBet = players.reduce((s, p) => s + p.bet, 0) || 1;
+  const totalBet = players.reduce((s, p) => s + (p.bet || 0), 0) || 1;
 
   let startAngle = 0;
   const sectors = {};
   players.forEach((p) => {
-    const portion = p.bet / totalBet;
+    const portion = (p.bet || 0) / totalBet;
     const angle = portion * Math.PI * 2;
     sectors[p.id] = { start: startAngle, end: startAngle + angle };
     startAngle += angle;
@@ -195,7 +202,7 @@ function simulateIceArena(players, bet) {
     vy: (Math.random() - 0.5) * 2,
   };
 
-  const steps = 200;
+  const steps = maxSteps;
   for (let t = 0; t < steps; t++) {
     puck.x += puck.vx * 2;
     puck.y += puck.vy * 2;
@@ -204,12 +211,10 @@ function simulateIceArena(players, bet) {
     if (puck.y < 5 || puck.y > 95) puck.vy *= -1;
 
     const frame = [];
-
     players.forEach((p) => {
       const mid = (sectors[p.id].start + sectors[p.id].end) / 2;
       const px = 50 + Math.cos(mid) * 35;
       const py = 50 + Math.sin(mid) * 35;
-
       frame.push({
         id: p.id,
         x: px,
@@ -251,15 +256,16 @@ function simulateIceArena(players, bet) {
   return { winnerId, frames };
 }
 
-function simulateElimination(players) {
+function simulateVyBivanie(players, maxSteps = 350) {
+  // "Выбивание" — верх/низ стены остаются дольше, потом одна стенка убирается and highlighted red
   const frames = [];
   const ids = players.map((p) => p.id);
-  const totalBet = players.reduce((s, p) => s + p.bet, 0) || 1;
+  const totalBet = players.reduce((s, p) => s + (p.bet || 0), 0) || 1;
 
   const balls = {};
   players.forEach((p, i) => {
-    const sizeFactor = 0.5 + (p.bet / totalBet) * 1.5;
-    const speedFactor = 1.5 - Math.min(1.2, (p.bet / totalBet) * 1.2);
+    const sizeFactor = 0.6 + ((p.bet || 0) / totalBet) * 1.4;
+    const speedFactor = 1.4 - Math.min(1.0, ((p.bet || 0) / totalBet) * 1.0);
     balls[p.id] = {
       x: 20 + (i * 60) / players.length,
       y: 50,
@@ -267,17 +273,21 @@ function simulateElimination(players) {
       vy: (Math.random() - 0.5) * speedFactor,
       r: 6 * sizeFactor,
       alive: true,
+      avatar: p.avatar,
+      color: p.color,
     };
   });
 
-  const steps = 300;
+  const steps = maxSteps;
+  const wallRemoveAt = Math.floor(steps * 0.65); // стенка убирается позже
+  const wallWhich = Math.random() < 0.5 ? "top" : "bottom"; // какая стенка убирается
+
   for (let t = 0; t < steps; t++) {
     const frame = [];
 
     ids.forEach((id) => {
       const b = balls[id];
       const p = players.find((x) => x.id === id);
-
       if (!b.alive) {
         frame.push({
           id,
@@ -285,8 +295,8 @@ function simulateElimination(players) {
           y: b.y,
           r: b.r,
           alive: false,
-          color: p.color,
-          avatar: p.avatar,
+          avatar: b.avatar,
+          color: b.color,
         });
         return;
       }
@@ -294,8 +304,59 @@ function simulateElimination(players) {
       b.x += b.vx;
       b.y += b.vy;
 
-      if (b.x < 5 || b.x > 95) b.vx *= -1;
-      if (b.y < 0 || b.y > 100) b.alive = false;
+      // боковые стены — отражение
+      if (b.x < 5) {
+        b.x = 5;
+        b.vx *= -1;
+      }
+      if (b.x > 95) {
+        b.x = 95;
+        b.vx *= -1;
+      }
+
+      // верх/низ — пока не удалены, отражают; после wallRemoveAt — выбранная стенка убирается
+      if (t < wallRemoveAt) {
+        if (b.y < 5) {
+          b.y = 5;
+          b.vy *= -1;
+        }
+        if (b.y > 95) {
+          b.y = 95;
+          b.vy *= -1;
+        }
+      } else {
+        // если мяч пересёк границу убираемой стенки — вылет
+        if (wallWhich === "top" && b.y < 0) b.alive = false;
+        if (wallWhich === "bottom" && b.y > 100) b.alive = false;
+        // другая стенка всё ещё отражает
+        if (wallWhich === "top" && b.y > 95) {
+          b.y = 95;
+          b.vy *= -1;
+        }
+        if (wallWhich === "bottom" && b.y < 5) {
+          b.y = 5;
+          b.vy *= -1;
+        }
+      }
+
+      // столкновения
+      ids.forEach((otherId) => {
+        if (otherId === id) return;
+        const o = balls[otherId];
+        if (!o.alive) return;
+        const dx = o.x - b.x;
+        const dy = o.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = b.r + o.r;
+        if (dist < minDist && dist > 0.1) {
+          const angle = Math.atan2(dy, dx);
+          const force = 0.8;
+          b.vx -= Math.cos(angle) * force;
+          b.vy -= Math.sin(angle) * force;
+          o.vx += Math.cos(angle) * force;
+          o.vy += Math.sin(angle) * force;
+        }
+      });
 
       frame.push({
         id,
@@ -303,9 +364,18 @@ function simulateElimination(players) {
         y: b.y,
         r: b.r,
         alive: b.alive,
-        color: p.color,
-        avatar: p.avatar,
+        avatar: b.avatar,
+        color: b.color,
       });
+    });
+
+    // add wall info for frontend (highlight removed wall red)
+    frame.push({
+      id: "walls",
+      extra: {
+        wallRemoved: t >= wallRemoveAt,
+        which: wallWhich,
+      },
     });
 
     frames.push(frame);
@@ -320,7 +390,7 @@ function simulateElimination(players) {
   return { winnerId, frames };
 }
 
-function simulateColorArena(players) {
+function simulateColorArena(players, maxSteps = 250) {
   const frames = [];
   const ids = players.map((p) => p.id);
   const gridSize = 20;
@@ -339,10 +409,9 @@ function simulateColorArena(players) {
     };
   });
 
-  const steps = 250;
+  const steps = maxSteps;
   for (let t = 0; t < steps; t++) {
     const frame = [];
-
     ids.forEach((id) => {
       const b = balls[id];
       const p = players.find((x) => x.id === id);
@@ -372,12 +441,6 @@ function simulateColorArena(players) {
 
     frame.push({
       id: "grid",
-      x: 0,
-      y: 0,
-      r: 0,
-      alive: true,
-      color: "#000000",
-      avatar: null,
       extra: { grid, gridSize },
     });
 
@@ -405,7 +468,7 @@ function simulateColorArena(players) {
   return { winnerId, frames };
 }
 
-function simulateBallRace(players) {
+function simulateBallRace(players, maxSteps = 250) {
   const frames = [];
   const ids = players.map((p) => p.id);
 
@@ -419,17 +482,14 @@ function simulateBallRace(players) {
     };
   });
 
-  const steps = 250;
+  const steps = maxSteps;
   for (let t = 0; t < steps; t++) {
     const frame = [];
-
     ids.forEach((id) => {
       const b = balls[id];
       const p = players.find((x) => x.id === id);
-
       b.y += b.vy;
       if (b.y > 95) b.y = 95;
-
       frame.push({
         id,
         x: b.x,
@@ -440,7 +500,6 @@ function simulateBallRace(players) {
         avatar: p.avatar,
       });
     });
-
     frames.push(frame);
   }
 
@@ -456,7 +515,8 @@ function simulateBallRace(players) {
   return { winnerId, frames };
 }
 
-function simulateMeteorFall(players) {
+function simulateMeteorFall(players, maxSteps = 250) {
+  // meteor fall — simple dodge; stake forced to 10 on join
   const frames = [];
   const ids = players.map((p) => p.id);
 
@@ -471,8 +531,7 @@ function simulateMeteorFall(players) {
   });
 
   const meteors = [];
-  const steps = 250;
-
+  const steps = maxSteps;
   for (let t = 0; t < steps; t++) {
     if (Math.random() < 0.2) {
       meteors.push({
@@ -483,31 +542,24 @@ function simulateMeteorFall(players) {
       });
     }
 
-    meteors.forEach((m) => {
-      m.y += m.vy;
-    });
+    meteors.forEach((m) => (m.y += m.vy));
 
     ids.forEach((id) => {
       const b = balls[id];
       if (!b.alive) return;
-
       const dir = Math.random() < 0.5 ? -1 : 1;
       b.x += dir * 1.5;
       if (b.x < 5) b.x = 5;
       if (b.x > 95) b.x = 95;
-
       meteors.forEach((m) => {
         const dx = m.x - b.x;
         const dy = m.y - b.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < m.r + b.r) {
-          b.alive = false;
-        }
+        if (dist < m.r + b.r) b.alive = false;
       });
     });
 
     const frame = [];
-
     ids.forEach((id) => {
       const b = balls[id];
       const p = players.find((x) => x.id === id);
@@ -530,7 +582,6 @@ function simulateMeteorFall(players) {
         r: m.r,
         alive: true,
         color: "#ff4444",
-        avatar: null,
       });
     });
 
@@ -546,39 +597,53 @@ function simulateMeteorFall(players) {
   return { winnerId, frames };
 }
 
+function simulateMix(players, bet) {
+  // Mix: стартует как случайный режим, в середине меняет режим
+  const allModes = ["ice_arena", "vybivanie", "color_arena", "ball_race", "meteor_fall"];
+  const first = allModes[Math.floor(Math.random() * allModes.length)];
+  let second = allModes[Math.floor(Math.random() * allModes.length)];
+  if (second === first) second = allModes[(allModes.indexOf(first) + 1) % allModes.length];
+
+  // симулируем первую половину, затем вторую, объединяем кадры
+  const half = 120;
+  const a = simulateGameByName(first, players, bet, half);
+  const b = simulateGameByName(second, players, bet, half);
+  const frames = [...a.frames, ...b.frames];
+  const winnerId = Math.random() < 0.5 ? a.winnerId : b.winnerId;
+  return { winnerId, frames };
+}
+
+function simulateGameByName(name, players, bet, maxSteps) {
+  if (name === "ice_arena") return simulateIceArena(players, bet, maxSteps);
+  if (name === "vybivanie") return simulateVyBivanie(players, maxSteps);
+  if (name === "color_arena") return simulateColorArena(players, maxSteps);
+  if (name === "ball_race") return simulateBallRace(players, maxSteps);
+  if (name === "meteor_fall") return simulateMeteorFall(players, maxSteps);
+  return simulateBallRace(players, maxSteps);
+}
+
 function simulateGame(mode, players, bet) {
   if (mode === "ice_arena") return simulateIceArena(players, bet);
-  if (mode === "elimination") return simulateElimination(players);
+  if (mode === "vybivanie" || mode === "elimination") return simulateVyBivanie(players);
   if (mode === "color_arena") return simulateColorArena(players);
   if (mode === "ball_race") return simulateBallRace(players);
   if (mode === "meteor_fall") return simulateMeteorFall(players);
+  if (mode === "mix") return simulateMix(players, bet);
   return simulateBallRace(players);
 }
 
-// ---------- LOBBIES ----------
-const modes = [
-  "ice_arena",
-  "elimination",
-  "color_arena",
-  "ball_race",
-  "meteor_fall",
-];
-
+// Lobbies
+const modes = ["ice_arena", "vybivanie", "color_arena", "ball_race", "meteor_fall", "mix"];
 const lobbies = {};
 modes.forEach((m) => {
-  lobbies[m] = {
-    mode: m,
-    bet: null,
-    players: [],
-    status: "waiting",
-  };
+  lobbies[m] = { mode: m, bet: null, players: [], status: "waiting", pregame: null };
 });
 
 const wsClients = new Set();
 
-function broadcastLobbyState(mode) {
-  const lobby = lobbies[mode];
-  const payload = JSON.stringify({
+function buildLobbyPayload(lobby) {
+  // include preview for waiting state (except ball_race and meteor_fall)
+  const payload = {
     type: "lobby_state",
     lobby: {
       mode: lobby.mode,
@@ -591,55 +656,92 @@ function broadcastLobbyState(mode) {
         avatar: p.avatar,
         bet: p.bet,
       })),
+      preview: null,
+      pregame: lobby.pregame || null,
     },
-  });
+  };
 
-  wsClients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  if (lobby.status === "waiting" && lobby.players.length >= 1 && !["ball_race", "meteor_fall"].includes(lobby.mode)) {
+    try {
+      const simPlayers = lobby.players.map((p) => ({
+        id: p.id,
+        db_id: p.db_id,
+        username: p.username,
+        avatar: p.avatar,
+        bet: p.bet,
+        color: p.color,
+      }));
+      const sim = simulateGame(lobby.mode, simPlayers, lobby.bet);
+      payload.lobby.preview = sim.frames.slice(0, PREVIEW_FRAMES);
+    } catch (e) {
+      payload.lobby.preview = null;
+    }
+  }
+
+  return payload;
+}
+
+function broadcastLobbyState(mode) {
+  const lobby = lobbies[mode];
+  const payload = JSON.stringify(buildLobbyPayload(lobby));
+  wsClients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) client.send(payload);
   });
+  // also broadcast global stats
+  broadcastGlobalStats();
 }
 
 function broadcastGlobalStats() {
   const online = wsClients.size;
   let totalBank = 0;
-
-  for (const m of modes) {
-    const lobby = lobbies[m];
-    if (lobby.bet && lobby.players.length > 0) {
-      totalBank += lobby.bet * lobby.players.length;
-    }
-  }
+  const modeCounts = {};
+  modes.forEach((m) => {
+    const l = lobbies[m];
+    modeCounts[m] = l.players.length;
+    if (l.bet && l.players.length > 0) totalBank += l.bet * l.players.length;
+  });
 
   const payload = JSON.stringify({
     type: "global_stats",
     online,
     totalBank,
+    modeCounts,
   });
 
-  wsClients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+  wsClients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) client.send(payload);
   });
 }
 
-setInterval(broadcastGlobalStats, 1000);
-
+// Start game with pregame timer and commission
 async function startGameForLobby(mode) {
   const lobby = lobbies[mode];
   if (lobby.status !== "waiting") return;
   if (lobby.players.length < 2) return;
 
-  lobby.status = "running";
+  // set pregame
+  lobby.status = "pregame";
+  lobby.pregame = { seconds: PREGAME_SECONDS, startedAt: Date.now() };
   broadcastLobbyState(mode);
 
-  const players = lobby.players;
+  // countdown asynchronously
+  const countdown = async () => {
+    for (let s = PREGAME_SECONDS; s > 0; s--) {
+      lobby.pregame.seconds = s;
+      broadcastLobbyState(mode);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    lobby.pregame = null;
+    lobby.status = "running";
+    broadcastLobbyState(mode);
 
-  for (const u of players) {
-    await changeStars(u.db_id, -lobby.bet);
-  }
+    // take bets (deduct immediately)
+    for (const u of lobby.players) {
+      await changeStars(u.db_id, -lobby.bet);
+    }
 
-  const sim = simulateGame(
-    mode,
-    players.map((p) => ({
+    // simulate
+    const playersForSim = lobby.players.map((p) => ({
       id: p.id,
       db_id: p.db_id,
       username: p.username,
@@ -647,55 +749,53 @@ async function startGameForLobby(mode) {
       avatar: p.avatar,
       bet: p.bet,
       color: p.color,
-    })),
-    lobby.bet
-  );
+    }));
 
-  const winner = players.find((p) => p.id === sim.winnerId);
+    const sim = simulateGame(mode, playersForSim, lobby.bet);
 
-  if (winner) {
-    const pot = lobby.bet * players.length;
-    await changeStars(winner.db_id, pot);
-  }
+    const winner = lobby.players.find((p) => p.id === sim.winnerId);
+    const pot = lobby.bet * lobby.players.length;
+    const payout = Math.floor(pot * (1 - COMMISSION));
 
-  const gameRow = await createGame(
-    mode,
-    lobby.bet,
-    players.map((p) => ({
-      id: p.db_id,
-      username: p.username,
-      avatar: p.avatar,
-    })),
-    winner ? winner.db_id : null,
-    sim.frames
-  );
+    if (winner) {
+      await changeStars(winner.db_id, payout);
+    }
 
-  const payload = JSON.stringify({
-    type: "game_result",
-    game: {
-      id: gameRow.id,
+    const gameRow = await createGame(
       mode,
-      bet: lobby.bet,
-      winnerId: winner ? winner.db_id : null,
-      players: players.map((p) => ({
-        id: p.db_id,
-        username: p.username,
-        avatar: p.avatar,
-      })),
-      replay: sim.frames,
-    },
-  });
+      lobby.bet,
+      lobby.players.map((p) => ({ id: p.db_id, username: p.username, avatar: p.avatar })),
+      winner ? winner.db_id : null,
+      sim.frames
+    );
 
-  wsClients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(payload);
-  });
+    const payload = JSON.stringify({
+      type: "game_result",
+      game: {
+        id: gameRow.id,
+        mode,
+        bet: lobby.bet,
+        winnerId: winner ? winner.db_id : null,
+        players: lobby.players.map((p) => ({ id: p.db_id, username: p.username, avatar: p.avatar })),
+        replay: sim.frames,
+        payout,
+        commission: Math.floor(pot * COMMISSION),
+      },
+    });
 
-  lobby.players = [];
-  lobby.status = "waiting";
-  broadcastLobbyState(mode);
+    wsClients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) client.send(payload);
+    });
+
+    lobby.players = [];
+    lobby.status = "waiting";
+    broadcastLobbyState(mode);
+  };
+
+  countdown();
 }
 
-// ---------- API ----------
+// API
 app.post("/api/me", async (req, res) => {
   try {
     const init = req.body.initDataUnsafe;
@@ -718,8 +818,9 @@ app.post("/api/me", async (req, res) => {
         stars: user.stars,
       },
     });
-  } catch {
-    res.json({ ok: false });
+  } catch (e) {
+    console.error(e);
+    res.json({ ok: false, error: "server_error" });
   }
 });
 
@@ -801,110 +902,66 @@ app.get("/api/games/replay/:id", (req, res) => {
   );
 });
 
+// admin give stars
 app.post("/api/admin/give-stars", (req, res) => {
   const { adminSecret, username, amount } = req.body;
+  if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
+  if (!username || !amount) return res.json({ ok: false, error: "bad_params" });
 
-  if (adminSecret !== ADMIN_SECRET)
-    return res.json({ ok: false, error: "forbidden" });
-
-  db.get(
-    "SELECT * FROM users WHERE username = ?",
-    [username],
-    async (err, row) => {
-      if (err || !row) return res.json({ ok: false, error: "user_not_found" });
-
-      const updated = await changeStars(row.id, Number(amount));
-
-      res.json({
-        ok: true,
-        user: {
-          id: updated.id,
-          username: updated.username,
-          stars: updated.stars,
-        },
-      });
-    }
-  );
+  db.get("SELECT * FROM users WHERE username = ?", [username], async (err, row) => {
+    if (err || !row) return res.json({ ok: false, error: "user_not_found" });
+    const updated = await changeStars(row.id, Number(amount));
+    res.json({ ok: true, user: { id: updated.id, username: updated.username, stars: updated.stars } });
+  });
 });
 
+// admin broadcast
 app.post("/api/admin/broadcast", (req, res) => {
   const { adminSecret, text } = req.body;
-
-  if (adminSecret !== ADMIN_SECRET)
-    return res.json({ ok: false, error: "forbidden" });
-
-  if (!text || !text.trim())
-    return res.json({ ok: false, error: "no_text" });
+  if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
+  if (!text || !text.trim()) return res.json({ ok: false, error: "no_text" });
 
   db.all("SELECT tg_id FROM users", async (err, rows) => {
-    if (err) return res.json({ ok: false });
-
+    if (err) return res.json({ ok: false, error: "db_error" });
     let sent = 0;
-
     for (const r of rows) {
       try {
         if (!BOT_TOKEN || BOT_TOKEN === "YOUR_BOT_TOKEN") {
           console.log("Broadcast to", r.tg_id, ":", text);
           sent++;
         } else {
-          await fetchFn(
-            `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chat_id: r.tg_id,
-                text,
-              }),
-            }
-          );
+          await fetchFn(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: r.tg_id, text }),
+          });
           sent++;
         }
-      } catch {}
+      } catch (e) {
+        console.error("broadcast error", e);
+      }
     }
-
     res.json({ ok: true, sent });
   });
 });
 
-// ---------- TOURNAMENTS ----------
-let currentTournament = null;
-
-app.get("/api/tournament", (req, res) => {
-  res.json({ ok: true, tournament: currentTournament });
-});
-
+// tournaments
 app.post("/api/admin/tournament", (req, res) => {
   const { adminSecret, modes: modesArr, bet, prize } = req.body;
-
-  if (adminSecret !== ADMIN_SECRET)
-    return res.json({ ok: false, error: "forbidden" });
-
+  if (adminSecret !== ADMIN_SECRET) return res.json({ ok: false, error: "forbidden" });
   const list = Array.isArray(modesArr) && modesArr.length ? modesArr : ["ice_arena"];
-
   const now = Date.now();
   db.run(
-    `INSERT INTO tournaments (modes_json, bet, prize, status, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO tournaments (modes_json, bet, prize, status, created_at) VALUES (?, ?, ?, ?, ?)`,
     [JSON.stringify(list), bet || 50, prize || 1000, "waiting", now],
     function (err) {
       if (err) return res.json({ ok: false });
-
-      currentTournament = {
-        id: this.lastID,
-        modes: list,
-        bet: bet || 50,
-        prize: prize || 1000,
-        status: "waiting",
-        createdAt: now,
-      };
-
-      res.json({ ok: true, tournament: currentTournament });
+      res.json({ ok: true, tournament: { id: this.lastID, modes: list, bet, prize, status: "waiting", createdAt: now } });
     }
   );
 });
 
-// ---------- WEBSOCKET ----------
+// websocket
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
@@ -923,7 +980,6 @@ wss.on("connection", (ws) => {
     if (data.type === "auth") {
       const init = data.initDataUnsafe;
       if (!init || !init.user) return;
-
       let user = await getUserByTgId(init.user.id);
       if (!user) user = await createUserFromInit(init);
       else user = await updateUserFromInit(user.id, init);
@@ -936,6 +992,7 @@ wss.on("connection", (ws) => {
         avatar: user.avatar,
       };
 
+      // send all lobby states and global stats
       modes.forEach((m) => broadcastLobbyState(m));
       return;
     }
@@ -944,9 +1001,17 @@ wss.on("connection", (ws) => {
 
     if (data.type === "join_lobby") {
       const mode = data.mode;
-      const bet = Number(data.bet);
+      let bet = Number(data.bet);
 
-      if (!modes.includes(mode) || bet <= 0) {
+      if (!modes.includes(mode)) {
+        ws.send(JSON.stringify({ type: "error", message: "Неверный режим" }));
+        return;
+      }
+
+      // meteor_fall fixed bet 10
+      if (mode === "meteor_fall") bet = 10;
+
+      if (bet <= 0) {
         ws.send(JSON.stringify({ type: "error", message: "Неверная ставка" }));
         return;
       }
@@ -956,9 +1021,7 @@ wss.on("connection", (ws) => {
 
       if (!lobby.players.find((p) => p.id === ws.user.tg_id)) {
         const colors = ["#4ade80", "#60a5fa", "#f97316", "#f472b6", "#a855f7"];
-        const color =
-          colors[Math.floor(Math.random() * colors.length)];
-
+        const color = colors[Math.floor(Math.random() * colors.length)];
         lobby.players.push({
           id: ws.user.tg_id,
           db_id: ws.user.db_id,
@@ -972,7 +1035,11 @@ wss.on("connection", (ws) => {
 
       broadcastLobbyState(mode);
 
-      if (lobby.players.length >= 2) {
+      // if enough players — start pregame
+      if (lobby.players.length >= 2 && !["ball_race", "meteor_fall"].includes(mode)) {
+        startGameForLobby(mode);
+      } else if (["ball_race", "meteor_fall"].includes(mode) && lobby.players.length >= 2) {
+        // for ball_race and meteor_fall start immediately (no preview)
         startGameForLobby(mode);
       }
     }
@@ -983,7 +1050,6 @@ wss.on("connection", (ws) => {
   });
 });
 
-// ---------- START ----------
 server.listen(PORT, () => {
   console.log("Server started on", PORT);
 });
