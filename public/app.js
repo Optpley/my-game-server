@@ -4,6 +4,8 @@ tg.expand();
 
 let currentUser = null;
 let ws = null;
+let wsReadyPromise = null;
+let wsReadyResolve = null;
 
 function $(id) { return document.getElementById(id); }
 
@@ -23,14 +25,31 @@ async function fetchMe() {
 }
 
 function initWebSocket() {
+  if (ws) return;
+  wsReadyPromise = new Promise((resolve) => { wsReadyResolve = resolve; });
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
-  ws.onopen = () => ws.send(JSON.stringify({ type: "auth", initDataUnsafe: tg.initDataUnsafe }));
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: "auth", initDataUnsafe: tg.initDataUnsafe }));
+    if (wsReadyResolve) wsReadyResolve();
+  };
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
     if (data.type === "global_stats") {
       if (data.modeCounts) Object.keys(data.modeCounts).forEach((m) => { const el = document.querySelector(`.mode-count[data-mode="${m}"]`); if (el) el.textContent = data.modeCounts[m] || 0; });
     }
   };
+  ws.onclose = () => { ws = null; wsReadyPromise = null; wsReadyResolve = null; setTimeout(initWebSocket, 800); };
+  ws.onerror = () => { /* ignore */ };
+}
+
+function ensureWsReady() {
+  if (!ws) initWebSocket();
+  if (ws && ws.readyState === WebSocket.OPEN) return Promise.resolve();
+  return wsReadyPromise || new Promise((resolve) => {
+    const check = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) { clearInterval(check); resolve(); }
+    }, 100);
+  });
 }
 
 function initTabs() {
@@ -53,7 +72,7 @@ function initGames() {
 
 function initAdmin() {
   const adminOverlay = $("adminOverlay"); const adminBtn = $("adminBtn"); const adminCloseBtn = $("adminCloseBtn"); const adminBackBtn = $("adminBackBtn");
-  const adminGiveBtn = $("adminGiveBtn"); const adminBroadcastBtn = $("adminBroadcastBtn"); const tournamentCreateBtn = $("tournamentCreateBtn");
+  const adminGiveBtn = $("adminGiveBtn"); const adminBroadcastBtn = $("adminBroadcastBtn"); const tournamentCreateBtn = $("tournamentCreateBtn"); const tournamentStartBtn = $("tournamentStartBtn");
   if (!adminBtn) return;
   adminBtn.addEventListener("click", () => {
     if (!currentUser || currentUser.username !== "Capibaraboyonrealnokrutoy") { tg.showPopup({ title: "Недоступно", message: "У вас нет доступа к админ‑панели", buttons: [{ id: "ok", type: "default", text: "Ок" }] }); return; }
@@ -70,7 +89,13 @@ function initAdmin() {
   adminBroadcastBtn.addEventListener("click", async () => {
     const text = $("adminBroadcastText").value.trim(); if (!text) return;
     const res = await fetch("/api/admin/broadcast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminSecret: "dev_secret", text }) });
-    const data = await res.json(); tg.showAlert(data.ok ? `Отправлено: ${data.sent}` : "Ошибка: " + (data.error || "unknown"));
+    const data = await res.json();
+    if (!data.ok) {
+      if (data.error === "no_bot_token") tg.showAlert("Рассылка не настроена на сервере: BOT_TOKEN не задан.");
+      else tg.showAlert("Ошибка рассылки: " + (data.error || "unknown"));
+    } else {
+      tg.showAlert(`Отправлено: ${data.sent}`);
+    }
   });
   tournamentCreateBtn.addEventListener("click", async () => {
     const bet = Number($("tournamentBet").value || 50); const prize1 = Number($("tournamentPrize1").value || 0); const prize2 = Number($("tournamentPrize2").value || 0); const prize3 = Number($("tournamentPrize3").value || 0);
@@ -79,12 +104,26 @@ function initAdmin() {
     const res = await fetch("/api/admin/tournament", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminSecret: "dev_secret", modes, bet, prizes }) });
     const data = await res.json(); tg.showAlert(data.ok ? "Турнир создан" : "Ошибка");
   });
+  tournamentStartBtn.addEventListener("click", async () => {
+    // get last tournament
+    const resList = await fetch("/api/admin/tournaments");
+    const listData = await resList.json();
+    if (!listData.ok || !listData.tournaments || !listData.tournaments.length) { tg.showAlert("Нет турниров для запуска"); return; }
+    const last = listData.tournaments[0];
+    const res = await fetch("/api/admin/start-tournament", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ adminSecret: "dev_secret", tournamentId: last.id }) });
+    const data = await res.json();
+    if (!data.ok) tg.showAlert("Ошибка запуска турнира: " + (data.error || "unknown"));
+    else tg.showAlert("Турнир запущен. Победители: " + (data.winners ? data.winners.map(w => (w.user.username || w.user.db_id) + ":" + w.prize).join(", ") : "нет"));
+  });
 }
 
 window.addEventListener("load", async () => {
-  await fetchMe(); initWebSocket(); initTabs(); initGames(); initAdmin();
+  await fetchMe();
+  initWebSocket();
+  initTabs();
+  initGames();
+  initAdmin();
 });
-
 
 
 
